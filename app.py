@@ -26,11 +26,10 @@ def main():
     commentWriter = CommentWriter(match)
     commentWriter.create_comments()
 
-    voicer = Voicer(match)
-    voicer.make_voice()
+    #voicer = Voicer(match)
+    #voicer.make_voice()
 
-    editor.create_replays()
-    #editor.add_comment_voices(voicer)
+    editor.edit()
 
     editor.save()
 

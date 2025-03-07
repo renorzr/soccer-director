@@ -3,7 +3,8 @@ from PIL import Image
 import io
 import base64
 from event import Event
-from utils import ai_client
+from utils import request_ai, format_time
+from random import random
 
 
 DETECT_BATCH_SIZE = 50
@@ -14,6 +15,7 @@ class EventDetector:
     def __init__(self, match, editor):
         self.match = match
         self.editor = editor
+        self.manual_events = [Event.from_dict(e) for e in match.manual_events]
         
     def detect(self):
         # if saved events exist, load them
@@ -26,10 +28,12 @@ class EventDetector:
         if self.match.events:
             last_time = self.match.events[-1].end
         else:
-            self.match.events.append(Event(0, 'start', last_time, last_time))
+            self.match.events.append(Event('start', last_time, last_time))
 
+        self.update_score(self.match.events)
         while last_time < self.match.end:
             new_events = self._detect_events(last_time)
+            self.update_score(new_events)
             print("append events", new_events)
             self.match.events.extend(new_events)
             last_time += DETECT_BATCH_SIZE / DETECT_FPS
@@ -37,14 +41,13 @@ class EventDetector:
             Event.save_to_yaml('events.yaml', self.match.events)
 
         if self.match.events[-1].type != 'end':
-            self.match.events.append(Event(0, 'end', self.match.end, self.match.end))
+            self.match.events.append(Event('end', self.match.end, self.match.end))
             Event.save_to_yaml('events.yaml', self.match.events)
 
     def _detect_events(self, since):
-        base64frames = []
         frames = []
 
-        print(f"Detecting events from {DETECT_BATCH_SIZE} frames since {since}")
+        print(f"comment {DETECT_BATCH_SIZE} frames since {since}")
         for i in range(DETECT_BATCH_SIZE):
             time = since + i / DETECT_FPS
             frame = self.editor.get_frame(time)
@@ -52,74 +55,50 @@ class EventDetector:
             detect_image_height = int(DETECT_IMAGE_WIDTH * image.height / image.width)
             image.thumbnail((DETECT_IMAGE_WIDTH, detect_image_height))
             frames.append(image)
-            #buffer = io.BytesIO()
-            #image.save(buffer, format="JPEG")
-            #image.save(f'frames/frame-{since:02}-{i:02}.jpg', format="JPEG")
-            #base64frames.append(base64.b64encode(buffer.getvalue()).decode('utf-8'))
 
-        #content = [
-        #                {
-        #                    "type": "text",
-        #                    "text": VIDEO_DETECT_PROMPT
-        #                },
-        #                *map(lambda x: {"image_url": {"url": f"data:image/jpeg;base64,{x}"}, "type": "image_url"}, base64frames),
-        #            ]
+        end_time = since + DETECT_BATCH_SIZE / DETECT_FPS
+        [team0, team1] = self.match.teams
+        manual_events = [e for e in self.manual_events if since <= e.start < end_time]
+        last_event_desc = self.describe_event(manual_events[-1]) if manual_events else ''
+        game_time = end_time - self.match.start
 
-        ## Create OpenAI chat completion
-        #print(f"Sending {len(base64frames)} frames to OpenAI")
-        #response = ai_client.chat.completions.create(
-        #    model="gpt-4o-mini",
-        #    messages=[
-        #        {
-        #            "role": "user", 
-        #            "content": content,
-        #        }
-        #    ],
-        #    max_tokens=100,
-        #)
+        prompt = f"你是足球比赛的解说员。这是一场足球比赛的视频片段，场上{team0.color}队服是{team0.name}队，{team1.color}队服是{team1.name}队。目前比赛进行到第{game_time}秒，比分({team0.score}:{team1.score})。{last_event_desc}请简短评论，无需描述所有信息，只输出一行。以下是之前的评论供参考，尽量不要重复：\n"
+        events = [e for e in self.match.events if e.type == 'comment' and e.start < end_time][-5:]
+        prompt += '\n'.join([f"{format_time(e.start - self.match.start)} {e.desc}" for e in events])
 
-        ## Print the response content
-        #print('usage:', response.usage)
-        #response_text = response.choices[0].message.content
-
-        response = ai_client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[VIDEO_DETECT_PROMPT, *frames],)
-        response_text = response.text
-        print(response_text)
+        response_text = request_ai(prompt)
+        return [*manual_events, Event('comment', end_time, end_time, None, None, response_text)]
 
 
         # Parse the response
-        events = []
-        for line in response_text.split('\n'):
-            parts = line.split(':')
-            if len(parts) != 5:
-                continue
+        #events = []
+        #for line in response_text.split('\n'):
+        #    parts = line.split(':')
+        #    if len(parts) != 5:
+        #        continue
 
-            (event_type, start_frame, end_frame, team, description) = parts
-            start_time = since + int(start_frame) / DETECT_FPS
-            end_time = since + int(end_frame) / DETECT_FPS
-            events.append(Event(level_of(event_type), event_type, start_time, end_time, team, description))
+        #    (event_type, start_frame, end_frame, team, description) = parts
+        #    start_time = since + int(start_frame) / DETECT_FPS
+        #    end_time = since + int(end_frame) / DETECT_FPS
+        #    events.append(Event(event_type, start_time, end_time, team, description))
 
-        end_time = since + DETECT_BATCH_SIZE / DETECT_FPS
-        events.append(Event(0, 'empty', end_time, end_time))
+        #end_time = since + DETECT_BATCH_SIZE / DETECT_FPS
+        #events.append(Event(0, 'empty', end_time, end_time))
 
-        return events
+    def describe_event(self, event):
+        team = self.match.teams[event.team]
+        player = event.player or '球员'
+        if event.type == 'goal':
+            return f"{team.name}队{player}进球！"
+        else:
+            return ""
 
-def level_of(event_type):
-    if event_type == 'goal':
-        return 10
-
-    if event_type == 'miss':
-        return 9
-
-    if event_type == 'foul':
-        return 8
-    
-    if event_type == 'save':
-        return 7
-    
-    return 5
+    def update_score(self, events):
+        for event in events:
+            if event.type == 'goal':
+                self.match.update_score(event.end, event.team, self.match.teams[event.team].score + 1)
+            elif event.type in ['start', 'end']:
+                self.match.update_score(event.start, None, None)
 
 
 VIDEO_DETECT_PROMPT = """

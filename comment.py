@@ -3,18 +3,19 @@ import yaml
 
 
 class Comment:
-    def __init__(self, time, text, type, event_id=None):
+    def __init__(self, time, text, type, event_id=None, event_level=0):
         self.time = time
         self.text = text
         self.type = type
         self.event_id = event_id
+        self.event_level = event_level
 
     def __str__(self):
         return f'{self.time}: {self.text}'
 
     @classmethod
     def from_dict(cls, obj):
-        return cls(obj['time'], obj['text'], obj['type'], obj.get('event_id'))
+        return cls(obj['time'], obj['text'], obj['type'], obj.get('event_id'), obj.get('event_level'))
     
     @classmethod
     def load_from_yaml(cls, file_path):

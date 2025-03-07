@@ -1,4 +1,5 @@
 import os
+import requests
 
 VOICE_DIR = 'voices'
 
@@ -16,8 +17,22 @@ class Voicer:
         if os.path.exists(voice_path):
             return
 
+        if not os.path.exists(VOICE_DIR):
+            os.mkdir(VOICE_DIR)
+
         # generate voice
-        # TODO: call text-to-speech API
+        url = os.environ.get('CHATTTS_URL') + '/v1/audio/speech'
+        response = requests.post(url, json={
+            'model': 'chattts',
+            'input': comment.text,
+            'voice': '好哥们',
+            'style': 'chat',
+        })
+
+        response.raise_for_status()
+
+        with open(voice_path, 'wb') as f:
+            f.write(response.content)
 
     def get_voice(self, comment):
         return os.path.join(VOICE_DIR, f'{comment.time}.mp3')

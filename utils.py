@@ -13,17 +13,35 @@ def parse_time(value):
     return int(minutes) * 60 + float(seconds)
 
 def format_time(seconds):
-    minutes = seconds // 60
+    minutes = int(seconds // 60)
     seconds = seconds % 60
     return f'{minutes:02}:{seconds:04.1f}'
 
 #ai_client = openai.OpenAI()
 
-#ai_client = openai.OpenAI(
-#    api_key=os.getenv("DASHSCOPE_API_KEY"),
-#    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-#)
+ai_client = openai.OpenAI(
+    api_key=os.getenv("DASHSCOPE_API_KEY"),
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+)
 
-from google import genai
+#from google import genai
 
-ai_client = genai.Client(api_key=os.getenv("GENAI_API_KEY"))
+#ai_client = genai.Client(api_key=os.getenv("GENAI_API_KEY"))
+
+def request_ai(prompt):
+    print("AI request:", prompt)
+    response = ai_client.chat.completions.create(
+        model="qwen-turbo",
+        temperature=0.9,
+        messages=[
+            {
+                "role": "user", 
+                "content": prompt,
+            }
+        ],
+        max_tokens=100,
+    )
+
+    text = response.choices[0].message.content
+    print("AI response:", text)
+    return text
