@@ -15,6 +15,7 @@ class Match:
         self.bias = obj.get('bias', 0.2)
         self.quarter = obj.get('quarter')
         self.intro = obj.get('intro')
+        self.narrator = obj.get('narrator', '云说')
         self.events = []
         self.comments = []
         self.manual_events = obj.get('events', [])

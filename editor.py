@@ -1,11 +1,12 @@
 from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, ImageClip, TextClip
 from moviepy.video.fx import MultiplySpeed, Resize, CrossFadeIn, CrossFadeOut
+import numpy as np
 
 DELAY_BEFORE_REPLAY = 4
 REPLAY_BUFFER = 2
 INTERRUPT_BUFFER = 0.5
-LOGO_STAY = 0.5
-LOGO_FLY = 1
+LOGO_STAY = 0.2
+LOGO_FLY = 0.8
 SCOREBOARD_DURATION = 20
 SCOREBOARD_INTERVAL = 60
 
@@ -77,6 +78,7 @@ class Editor:
         last_comment = None
         for comment in self.match.comments:
             voice_path = voicer.get_voice(comment)
+            print(f"voice path: {voice_path}")
             voice_clip = AudioFileClip(voice_path)
             last_comment_end = last_comment.time + audio_clips[-1].duration if last_comment else 0
             if comment.time < last_comment_end:
@@ -124,11 +126,13 @@ class Editor:
 
     def create_logo_video(self, logo_path):
         clip = ImageClip(logo_path)
+        screen_size = self.main_video.size
+        white_blank_image = ImageClip(np.zeros((screen_size[1], screen_size[0], 3), dtype=np.uint8) + 255).with_duration(LOGO_FLY * 2 + LOGO_STAY).with_start(0).with_position(("center", "center"))
         puff_in_clip = clip.with_effects([Resize(lambda t: (2 * (LOGO_FLY - t) / LOGO_FLY) + 1)]).with_position(("center", "center")).with_duration(LOGO_FLY)
         stay_clip = clip.with_duration(LOGO_STAY).with_start(puff_in_clip.end).with_position(("center", "center"))
         puff_out_clip = clip.with_effects([Resize(lambda t: 2 * t / LOGO_FLY + 1)]).with_start(stay_clip.end).with_position(("center", "center")).with_duration(LOGO_FLY)
 
-        return CompositeVideoClip([puff_in_clip, stay_clip, puff_out_clip])
+        return CompositeVideoClip([white_blank_image, puff_in_clip, stay_clip, puff_out_clip])
 
 def is_video(path):
     return path.endswith('.mp4') or path.endswith('.avi') or path.endswith('.mov')

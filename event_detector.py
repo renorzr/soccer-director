@@ -62,11 +62,11 @@ class EventDetector:
         last_event_desc = self.describe_event(manual_events[-1]) if manual_events else ''
         game_time = end_time - self.match.start
 
-        prompt = f"你是足球比赛的解说员。这是一场足球比赛的视频片段，场上{team0.color}队服是{team0.name}队，{team1.color}队服是{team1.name}队。目前比赛进行到第{game_time}秒，比分({team0.score}:{team1.score})。{last_event_desc}请简短评论，无需描述所有信息，只输出一行。以下是之前的评论供参考，尽量不要重复：\n"
+        prompt = f"你是足球解说员。这是一场足球比赛的视频片段，场上{team0.color}队服是{team0.name}队，{team1.color}队服是{team1.name}队。目前比赛进行到第{game_time}秒，比分({team0.score}:{team1.score})。{last_event_desc}请简短评论，无需描述所有信息，只输出一行。以下是之前的评论供参考，尽量不要重复：\n"
         events = [e for e in self.match.events if e.type == 'comment' and e.start < end_time][-5:]
         prompt += '\n'.join([f"{format_time(e.start - self.match.start)} {e.desc}" for e in events])
 
-        response_text = request_ai(prompt)
+        response_text = request_ai(prompt, frames)
         return [*manual_events, Event('comment', end_time, end_time, None, None, response_text)]
 
 
@@ -90,6 +90,8 @@ class EventDetector:
         player = event.player or '球员'
         if event.type == 'goal':
             return f"{team.name}队{player}进球！"
+        elif event.type == 'miss':
+            return f"{team.name}队{player}射门未进！"
         else:
             return ""
 

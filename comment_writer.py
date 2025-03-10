@@ -30,23 +30,30 @@ class CommentWriter:
     def _create_event_comments(self, event):
         if event.type == 'goal':
             return [Comment(event.start, "射门！", 'event', event.id, event.level), Comment(event.end, "球进了！", 'event', event.id, event.level)]
+        elif event.type == 'miss':
+            return [Comment(event.start, "射门！", 'event', event.id, event.level), Comment(event.end, "球没进！", 'event', event.id, event.level)]
         elif event.type == 'foul':
             return [Comment(event.start, "犯规了", 'event', event.id, event.level)]
         elif event.type == 'start':
-            prompt = f"""你是一名足球解说员，请根据以下信息生成比赛开始前的介绍：
+            non_start_match = f"目前是第{self.match.quarter}节，比分是{self.match.teams[0].score}:{self.match.teams[1].score}" if self.match.quarter else ""
+            prompt = f"""你是足球解说员"{self.match.narrator}"，请根据以下信息生成比赛开始前的简短介绍：
             比赛名称：{self.match.name}
             {self.match.teams[0].color}队服: {self.match.teams[0].name}队
             {self.match.teams[1].color}队服: {self.match.teams[1].name}队
+            {non_start_match}
             """
-            comments = [Comment(event.start - 10, request_ai(prompt), 'event', event.id, event.level)]
+            intro_time = event.start - 30 if event.start > 30 else 0
+            comments = [Comment(intro_time, request_ai(prompt), 'event', event.id, event.level)]
             comments.append(Comment(event.start, "比赛开始", 'event', event.id, event.level))
             return comments
         elif event.type == 'end':
-            prompt = f"""你是一名足球解说员，请宣布比赛结束并根据以下信息生成简短总结：
+            end_match = f"第{self.match.quarter}节比赛结束(共4节比赛)" if self.match.quarter and self.match.quater < 4 else "全场比赛结束"
+            prompt = f"""你是足球解说员"{self.match.narrator}"，请宣布比赛结束并根据以下信息生成简短总结：
             比赛名称：{self.match.name}
             {self.match.teams[0].color}队服: {self.match.teams[0].name}队
             {self.match.teams[1].color}队服: {self.match.teams[1].name}队
             比分：{self.match.teams[0].score}:{self.match.teams[1].score}
+            {end_match}
             """
             return [Comment(event.start, request_ai(prompt), 'event', event.id, event.level)]
         elif event.type == 'comment':

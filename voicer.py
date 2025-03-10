@@ -1,7 +1,10 @@
+import time
 import os
-import requests
+import dashscope
+from dashscope.audio.tts_v2 import SpeechSynthesizer
 
 VOICE_DIR = 'voices'
+dashscope.api_key=os.getenv("DASHSCOPE_API_KEY")
 
 class Voicer:
     def __init__(self, match):
@@ -10,6 +13,7 @@ class Voicer:
     def make_voice(self):
         for comment in self.match.comments:
             self._make_voice(comment)
+            time.sleep(1)
 
     def _make_voice(self, comment):
         # skip if voice already exists
@@ -20,19 +24,11 @@ class Voicer:
         if not os.path.exists(VOICE_DIR):
             os.mkdir(VOICE_DIR)
 
-        # generate voice
-        url = os.environ.get('CHATTTS_URL') + '/v1/audio/speech'
-        response = requests.post(url, json={
-            'model': 'chattts',
-            'input': comment.text,
-            'voice': '好哥们',
-            'style': 'chat',
-        })
-
-        response.raise_for_status()
-
+        # generate and save voice
+        synthesizer = SpeechSynthesizer(model="cosyvoice-v1", voice="longshuo")
+        audio = synthesizer.call(comment.text)
         with open(voice_path, 'wb') as f:
-            f.write(response.content)
+            f.write(audio)
 
     def get_voice(self, comment):
         return os.path.join(VOICE_DIR, f'{comment.time}.mp3')
