@@ -1,4 +1,6 @@
 from moviepy import ImageClip, TextClip, CompositeVideoClip
+from utils import format_time
+
 
 class TextProp:
     def __init__(self, left, top, width, height, color=None):
@@ -48,16 +50,11 @@ class Scoreboard:
         clips = [c for c in clips if c is not None]
 
         if self.time_textprop is not None:
-            for i in range(0, duration):
-                clips.append(render_text(format_time(time + i), self.time_textprop, i, 1))
+            for i in range(0, int(duration)):
+                clips.append(render_text(format_time(time + i, 0), self.time_textprop, i, 1))
 
         return CompositeVideoClip(clips)
 
-
-def format_time(seconds):
-    minutes = int(seconds // 60)
-    seconds = int(seconds % 60)
-    return f'{minutes:02}:{seconds:02}'
 
 
 def render_text(text, textprop, time, duration):

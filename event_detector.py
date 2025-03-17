@@ -1,7 +1,4 @@
-import yaml
 from PIL import Image
-import io
-import base64
 from event import Event
 from utils import request_ai, format_time
 from random import random
@@ -30,10 +27,8 @@ class EventDetector:
         else:
             self.match.events.append(Event('start', last_time, last_time))
 
-        self.update_score(self.match.events)
         while last_time < self.match.end:
             new_events = self._detect_events(last_time)
-            self.update_score(new_events)
             print("append events", new_events)
             self.match.events.extend(new_events)
             last_time += DETECT_BATCH_SIZE / DETECT_FPS
@@ -57,17 +52,11 @@ class EventDetector:
             frames.append(image)
 
         end_time = since + DETECT_BATCH_SIZE / DETECT_FPS
-        [team0, team1] = self.match.teams
         manual_events = [e for e in self.manual_events if since <= e.start < end_time]
-        last_event_desc = self.describe_event(manual_events[-1]) if manual_events else ''
-        game_time = end_time - self.match.start
-
-        prompt = f"你是足球解说员。这是一场足球比赛的视频片段，场上{team0.color}队服是{team0.name}队，{team1.color}队服是{team1.name}队。目前比赛进行到第{game_time}秒，比分({team0.score}:{team1.score})。{last_event_desc}请简短评论，无需描述所有信息，只输出一行。以下是之前的评论供参考，尽量不要重复：\n"
-        events = [e for e in self.match.events if e.type == 'comment' and e.start < end_time][-5:]
-        prompt += '\n'.join([f"{format_time(e.start - self.match.start)} {e.desc}" for e in events])
-
+        prompt = f"请描述视频片段中足球场上的内容，忽略场外内容，只要一行。注意：{self.match.teams[0].color}队服是{self.match.teams[0].name}队，{self.match.teams[1].color}队服是{self.match.teams[1].name}队，场上的大人是裁判，不需要描述。重点描述场上态势，如：进攻，防守，前插，回防，等等。"
         response_text = request_ai(prompt, frames)
-        return [*manual_events, Event('comment', end_time, end_time, None, None, response_text)]
+
+        return [*manual_events, Event('video_description', end_time, end_time, None, None, response_text)]
 
 
         # Parse the response
@@ -94,13 +83,6 @@ class EventDetector:
             return f"{team.name}队{player}射门未进！"
         else:
             return ""
-
-    def update_score(self, events):
-        for event in events:
-            if event.type == 'goal':
-                self.match.update_score(event.end, event.team, self.match.teams[event.team].score + 1)
-            elif event.type in ['start', 'end']:
-                self.match.update_score(event.start, None, None)
 
 
 VIDEO_DETECT_PROMPT = """

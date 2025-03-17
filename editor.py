@@ -2,13 +2,11 @@ from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeA
 from moviepy.video.fx import MultiplySpeed, Resize, CrossFadeIn, CrossFadeOut
 import numpy as np
 
-DELAY_BEFORE_REPLAY = 4
+DELAY_BEFORE_REPLAY = 6
 REPLAY_BUFFER = 2
 INTERRUPT_BUFFER = 0.5
 LOGO_STAY = 0.2
 LOGO_FLY = 0.8
-SCOREBOARD_DURATION = 20
-SCOREBOARD_INTERVAL = 60
 
 class Editor:
     def __init__(self, match):
@@ -49,26 +47,40 @@ class Editor:
             self.logo_clips.append(logo_clip_before)
             self.logo_clips.append(logo_clip_after)
 
-        main_clip_after = self.main_video.subclipped(last_main_time, self.main_video.duration).with_start(last_main_time)
-        self.clips.append(main_clip_after)
+        if last_main_time < self.main_video.duration:
+            main_clip_after = self.main_video.subclipped(last_main_time, self.main_video.duration).with_start(last_main_time)
+            self.clips.append(main_clip_after)
 
 
     def create_scoreboards(self):
-        last_score_update = None
-        print("score updates", self.match.score_updates)
-        for update in self.match.score_updates:
-            if last_score_update:
-                for time in range(last_score_update.time + SCOREBOARD_INTERVAL, update.time, SCOREBOARD_INTERVAL):
-                    self.render_scoreboard(time, last_score_update.score0, last_score_update.score1)
+        if not self.match.score_updates:
+            # 如果没有任何比分更新，创建一个0:0的记分牌从开始到结束
+            self.render_scoreboard(self.match.start, self.match.end, 0, 0)
+            return
 
-            self.render_scoreboard(update.time, update.score0, update.score1)
+        # 从后往前处理每个更新
+        updates = self.match.score_updates
+        for i in range(len(updates) - 1, -1, -1):
+            current_update = updates[i]
+            next_time = self.match.end if i == len(updates) - 1 else updates[i + 1].time
+            
+            self.render_scoreboard(
+                current_update.time,
+                next_time,
+                current_update.score0,
+                current_update.score1
+            )
+        
+        # 处理比赛开始到第一次更新之间的时间段
+        if updates[0].time > self.match.start:
+            self.render_scoreboard(self.match.start, updates[0].time, 0, 0)
 
 
-    def render_scoreboard(self, time, score0, score1):
-        print(f"render scoreboard at {time} with {score0}:{score1}")
+    def render_scoreboard(self, start_time, end_time, score0, score1):
+        print(f"render scoreboard {start_time} to {end_time} with {score0}:{score1}")
         self.scoreboard_clips.append(
-            self.match.scoreboard.render(time - self.match.start, SCOREBOARD_DURATION, score0, score1)
-                .with_start(time)
+            self.match.scoreboard.render(self.match.game_time(start_time), end_time - start_time, score0, score1)
+                .with_start(start_time)
                 .with_position(("center", "bottom"))
         )
         
@@ -79,7 +91,7 @@ class Editor:
         for comment in self.match.comments:
             voice_path = voicer.get_voice(comment)
             print(f"voice path: {voice_path}")
-            voice_clip = AudioFileClip(voice_path)
+            voice_clip = AudioFileClip(voice_path).with_volume_scaled(1.3)
             last_comment_end = last_comment.time + audio_clips[-1].duration if last_comment else 0
             if comment.time < last_comment_end:
                 print("overlapping comments, skipping lower level")
@@ -107,7 +119,7 @@ class Editor:
         final_clip.preview()
 
     def composite(self, start=0, end=None):
-        final_clip = CompositeVideoClip(self.clips + self.scoreboard_clips + self.replay_clips + self.logo_clips)
+        final_clip = CompositeVideoClip(self.clips + self.replay_clips + self.scoreboard_clips + self.logo_clips)
         if self.comment_audio:
             final_clip.audio=CompositeAudioClip([final_clip.audio, self.comment_audio])
 
@@ -125,7 +137,7 @@ class Editor:
         return self.main_video.duration
 
     def create_logo_video(self, logo_path):
-        clip = ImageClip(logo_path)
+        clip = ImageClip(logo_path).with_effects([Resize(self.main_video.size)])
         screen_size = self.main_video.size
         white_blank_image = ImageClip(np.zeros((screen_size[1], screen_size[0], 3), dtype=np.uint8) + 255).with_duration(LOGO_FLY * 2 + LOGO_STAY).with_start(0).with_position(("center", "center"))
         puff_in_clip = clip.with_effects([Resize(lambda t: (2 * (LOGO_FLY - t) / LOGO_FLY) + 1)]).with_position(("center", "center")).with_duration(LOGO_FLY)

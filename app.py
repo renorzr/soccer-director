@@ -20,9 +20,6 @@ def main():
     
     editor = Editor(match)
 
-    eventDetector = EventDetector(match, editor)
-    eventDetector.detect()
-
     commentWriter = CommentWriter(match)
     commentWriter.create_comments()
 
