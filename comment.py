@@ -20,8 +20,8 @@ class Comment:
     @classmethod
     def load_from_yaml(cls, file_path):
         print("load comments from", file_path)
-        if not os.path.exists('comments.yaml'):
-            print("comments.yaml not found")
+        if not os.path.exists(file_path):
+            print(f"{file_path} not found")
             return []
 
         with open(file_path, 'r') as f:

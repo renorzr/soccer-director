@@ -23,7 +23,9 @@ class Match:
         self.events = [Event('start', self.start, self.start)] + Event.load_from_csv(f'events.{match_id}.csv') + [Event('end', self.end, self.end)]
         self.comments = []
         self.score_updates = []
-        self.scoreboard = Scoreboard.from_dict(self.name, self.teams[0].code, self.teams[1].code, obj['scoreboard']) if 'scoreboard' in obj else None
+        self.scoreboard = Scoreboard.from_dict(
+            {'title': self.name, 'team0': self.teams[0].code, 'team1': self.teams[1].code, 'quarter': 'Q' + str(self.quarter)}, 
+            obj['scoreboard']) if 'scoreboard' in obj else None
         self.score_updates.append(ScoreUpdate(self.start, self.teams[0].score, self.teams[1].score))
 
     def update_score(self, time, team=None, score=None):

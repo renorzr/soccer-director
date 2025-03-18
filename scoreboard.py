@@ -15,43 +15,42 @@ class TextProp:
         return cls(obj['left'], obj['top'], obj['width'], obj['height'], obj.get('color')) if obj is not None else None
 
 class Scoreboard:
-    def __init__(self, img: str, title: str, team0: str, team1: str, title_textprop: TextProp, time_textprop: TextProp, team0_textprop: TextProp, team1_textprop: TextProp, score0_textprop: TextProp, score1_textprop: TextProp):
+    def __init__(self, img: str, texts: dict, textprops: dict):
         self.img = img
-        self.title = title
-        self.team0 = team0
-        self.team1 = team1
-        self.title_textprop = title_textprop
-        self.time_textprop = time_textprop
-        self.team0_textprop = team0_textprop
-        self.team1_textprop = team1_textprop
-        self.score0_textprop = score0_textprop
-        self.score1_textprop = score1_textprop
+        self.texts = texts
+        self.textprops = textprops
 
 
     @classmethod
-    def from_dict(cls, title, team0, team1, obj):
-        return cls(
-            obj['img'], title, team0, team1,
-            TextProp.from_dict(obj.get('title')), TextProp.from_dict(obj.get('time')),
-            TextProp.from_dict(obj.get('team0')), TextProp.from_dict(obj.get('team1')),
-            TextProp.from_dict(obj.get('score0')), TextProp.from_dict(obj.get('score1'))
-        )
+    def from_dict(cls, texts, obj):
+        textprops = {}
+        for key, value in obj.items():
+            if key == 'img':
+                img = value
+            else:
+                textprops[key] = TextProp.from_dict(value)
+
+        return cls(img, texts, textprops)
 
 
     def render(self, time, duration, score0, score1):
         clips = [
             ImageClip(self.img).with_duration(duration).with_start(0).with_position(("center", "top")),
-            render_text(self.title, self.title_textprop, 0, duration),
-            render_text(self.team0, self.team0_textprop, 0, duration),
-            render_text(self.team1, self.team1_textprop, 0, duration),
-            render_text(str(score0), self.score0_textprop, 0, duration),
-            render_text(str(score1), self.score1_textprop, 0, duration)
+            render_text(str(score0), self.textprops.get('score0'), 0, duration),
+            render_text(str(score1), self.textprops.get('score1'), 0, duration),
         ]
+
+        for key, text in self.texts.items():
+            textprop = self.textprops.get(key)
+            if textprop is not None:
+                clips.append(render_text(text, textprop, 0, duration))
+            
         clips = [c for c in clips if c is not None]
 
-        if self.time_textprop is not None:
+        time_textprop = self.textprops.get('time')
+        if time_textprop is not None:
             for i in range(0, int(duration)):
-                clips.append(render_text(format_time(time + i, 0), self.time_textprop, i, 1))
+                clips.append(render_text(format_time(time + i, 0), time_textprop, i, 1))
 
         return CompositeVideoClip(clips)
 
@@ -68,11 +67,20 @@ def render_text(text, textprop, time, duration):
 
 if __name__ == '__main__':
     b = Scoreboard.from_dict(
-        'Soccer Match',
-        'GNK',
-        'SKR',
+        {
+            'title': 'Soccer Match',
+            'team0': 'GNK',
+            'team1': 'SKR',
+            'quarter': 'Q2',
+        },
         {
         'img': '../soccer-demo/scoreboard.png',
+        'quarter': {
+            'left': 170,
+            'top': 70,
+            'width': 30,
+            'height': 10,
+        },
         'score0': {
             'left': 12,
             'top': 32,
