@@ -15,7 +15,6 @@ class Voicer:
     def make_voice(self):
         for comment in self.match.comments:
             self._make_voice(comment)
-            time.sleep(1)
 
     def _make_voice(self, comment):
         # skip if voice already exists
@@ -27,6 +26,7 @@ class Voicer:
             os.mkdir(VOICE_DIR)
 
         # generate and save voice
+        time.sleep(1)
         print(f"generating voice for comment {comment.text} at {format_time(comment.time)} with path {voice_path}")
         synthesizer = SpeechSynthesizer(model="cosyvoice-v1", voice="longshuo")
         audio = synthesizer.call(comment.text)

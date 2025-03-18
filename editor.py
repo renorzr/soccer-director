@@ -1,11 +1,12 @@
 from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, ImageClip, TextClip
 from moviepy.video.fx import MultiplySpeed, Resize, CrossFadeIn, CrossFadeOut
 import numpy as np
+import os
 
 DELAY_BEFORE_REPLAY = 6
 REPLAY_BUFFER = 2
 INTERRUPT_BUFFER = 0.5
-LOGO_STAY = 0.2
+LOGO_STAY = 0.5
 LOGO_FLY = 0.8
 
 class Editor:
@@ -17,6 +18,7 @@ class Editor:
         self.scoreboard_clips = []
         self.main_video = VideoFileClip(self.match.main_video)
         self.logo_video = VideoFileClip(self.match.logo).with_effects([Resize(self.main_video.size)]) if is_video(self.match.logo) else self.create_logo_video(self.match.logo)
+        self.bgm = AudioFileClip(self.match.bgm) if self.match.bgm and os.path.exists(self.match.bgm) else None
         self.comment_audio = None
 
 
@@ -91,7 +93,7 @@ class Editor:
         for comment in self.match.comments:
             voice_path = voicer.get_voice(comment)
             print(f"voice path: {voice_path}")
-            voice_clip = AudioFileClip(voice_path).with_volume_scaled(1.3)
+            voice_clip = AudioFileClip(voice_path).with_volume_scaled(2)
             last_comment_end = last_comment.time + audio_clips[-1].duration if last_comment else 0
             if comment.time < last_comment_end:
                 print("overlapping comments, skipping lower level")
@@ -112,7 +114,7 @@ class Editor:
 
     def save(self, start=0, end=None):
         final_clip = self.composite(start, end)
-        final_clip.write_videofile('output.mp4')
+        final_clip.write_videofile(f'output.{self.match.match_id}.mp4')
 
     def preview(self, start=0, end=None):
         final_clip = self.composite(start, end)
@@ -123,18 +125,57 @@ class Editor:
         if self.comment_audio:
             final_clip.audio=CompositeAudioClip([final_clip.audio, self.comment_audio])
 
+        hightlights_clip = self.create_hightlights_clip(final_clip)
+        final_clip = CompositeVideoClip([final_clip, hightlights_clip.with_start(final_clip.end)])
+
         if not end:
             return final_clip
 
         print(f"Subclipping from {start} to {end}")
         return final_clip.subclipped(start, end)
 
+    def create_hightlights_clip(self, final_clip):
+        clips = []
+        logo_clips = []
+        last_highlight_end = 0
+
+        for event in self.match.events:
+            if event.level >= 8:
+                highlight_clip = final_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER).with_start(last_highlight_end)
+                clips.append(highlight_clip)
+                logo_clips.append(self.create_logo_clip(highlight_clip.end))
+                replay_clip = highlight_clip.with_effects([MultiplySpeed(0.5)]).without_audio().with_start(highlight_clip.end)
+                clips.append(replay_clip)
+                last_highlight_end = replay_clip.end
+                logo_clips.append(self.create_logo_clip(last_highlight_end))
+
+        highlights_clip = CompositeVideoClip(clips + logo_clips)
+
+        if self.bgm:
+            bgm_clips = []
+            last_bgm_end = 0
+
+            while last_bgm_end < highlights_clip.duration:
+                if highlights_clip.end - last_bgm_end > self.bgm.duration:
+                    current_bgm_clip = self.bgm.copy()
+                else:
+                    current_bgm_clip = self.bgm.subclipped(0, highlights_clip.duration - last_bgm_end)
+
+                bgm_clips.append(current_bgm_clip.with_start(last_bgm_end))
+                last_bgm_end = bgm_clips[-1].end
+                
+            highlights_clip.audio = CompositeAudioClip([highlights_clip.audio, *bgm_clips])
+
+        return highlights_clip
 
     def get_frame(self, time):
         return self.main_video.get_frame(time)
 
     def get_duration(self):
         return self.main_video.duration
+
+    def create_logo_clip(self, time):
+        return self.logo_video.with_start(time - self.logo_video.duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
 
     def create_logo_video(self, logo_path):
         clip = ImageClip(logo_path).with_effects([Resize(self.main_video.size)])

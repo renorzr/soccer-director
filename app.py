@@ -7,16 +7,21 @@ import yaml
 import os
 import sys
 import time
+from utils import format_time
 
 
 def main():
-    # change work dir if specified in command line
-    if len(sys.argv) > 1:
-        os.chdir(sys.argv[1])
+    start = time.time()
+    directory, filename = os.path.split(sys.argv[1])
+    os.chdir(directory)
+    match_id, ext = os.path.splitext(os.path.basename(filename))
+    if ext not in ['.yaml', '.yml']:
+        print(f"Error: {filename} is not a valid match file")
+        return 1
         
     # read project yaml
-    with open('match.yaml', 'r', encoding='UTF-8') as f:
-        match = Match(yaml.safe_load(f))
+    with open(filename, 'r', encoding='UTF-8') as f:
+        match = Match(match_id, yaml.safe_load(f))
     
     editor = Editor(match)
 
@@ -30,8 +35,8 @@ def main():
 
     editor.save()
 
-    time.sleep(1)
-    print('Done!')
+    print(f"Done in {format_time(time.time() - start)}")
+    time.sleep(2)
 
 
 if __name__ == '__main__':

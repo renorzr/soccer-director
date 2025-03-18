@@ -5,12 +5,14 @@ from scoreboard import Scoreboard
 
 # Description: This file contains the Match class which is used to store the match data.
 class Match:
-    def __init__(self, obj):
+    def __init__(self, match_id, obj):
+        self.match_id = match_id
         self.name = obj['name']
         self.description = obj.get('description', '')
         self.teams = [Team(obj['name'], obj['color'], obj.get('code'), obj.get('score', 0)) for obj in obj['teams']]
-        self.main_video = obj['main_video']
+        self.main_video = obj.get('main_video', f'{match_id}.mp4')
         self.logo = obj.get('logo', 'logo.png')
+        self.bgm = obj.get('bgm', 'bgm.mp3')
         self.start = parse_time(obj.get('start', 0))
         self.end = parse_time(obj.get('end'))
         self.prev_time = parse_time(obj.get('prev_time', 0))
@@ -18,9 +20,8 @@ class Match:
         self.quarter = obj.get('quarter')
         self.intro = obj.get('intro')
         self.narrator = obj.get('narrator', '云说')
-        self.events = [Event('start', self.start, self.start)] + Event.load_from_csv('events.csv') + [Event('end', self.end, self.end)]
+        self.events = [Event('start', self.start, self.start)] + Event.load_from_csv(f'events.{match_id}.csv') + [Event('end', self.end, self.end)]
         self.comments = []
-        self.manual_events = obj.get('events', [])
         self.score_updates = []
         self.scoreboard = Scoreboard.from_dict(self.name, self.teams[0].code, self.teams[1].code, obj['scoreboard']) if 'scoreboard' in obj else None
         self.score_updates.append(ScoreUpdate(self.start, self.teams[0].score, self.teams[1].score))
