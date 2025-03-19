@@ -16,6 +16,7 @@ class Event:
 
     @classmethod
     def load_from_csv(cls, file_path):
+        print(f"loading events from {file_path}")
         if not os.path.exists(file_path):
             return []
 
@@ -29,8 +30,10 @@ class Event:
                 for i, value in enumerate(row):
                     if value:  # 只添加非空值
                         event_dict[headers[i]] = value
-                result.append(cls.from_dict(event_dict))
+                if 'type' in event_dict:
+                    result.append(cls.from_dict(event_dict))
 
+        print(f"loaded {len(result)} events")
         return result
     
     @classmethod
@@ -69,6 +72,7 @@ EVENT_LEVELS = {
     'start': 7,
     'end': 7,
     'comment': 6,
+    'kickoff': 5,
 }
 
 def level_of(event_type):

@@ -1,10 +1,11 @@
-from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, ImageClip, TextClip
+from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, ImageClip, concatenate_videoclips
 from moviepy.video.fx import MultiplySpeed, Resize, CrossFadeIn, CrossFadeOut
 import numpy as np
 import os
 
 DELAY_BEFORE_REPLAY = 6
 REPLAY_BUFFER = 2
+HIGHLIGHT_EXTEND = 1
 INTERRUPT_BUFFER = 0.5
 LOGO_STAY = 0.5
 LOGO_FLY = 0.8
@@ -17,7 +18,8 @@ class Editor:
         self.replay_clips = []
         self.scoreboard_clips = []
         self.main_video = VideoFileClip(self.match.main_video)
-        self.logo_video = VideoFileClip(self.match.logo).with_effects([Resize(self.main_video.size)]) if is_video(self.match.logo) else self.create_logo_video(self.match.logo)
+        self.logo_img = ImageClip(self.match.logo_img).with_effects([Resize(self.main_video.size)])
+        self.logo_video = self.load_logo_video()
         self.bgm = AudioFileClip(self.match.bgm) if self.match.bgm and os.path.exists(self.match.bgm) else None
         self.comment_audio = None
 
@@ -36,7 +38,11 @@ class Editor:
         logo_video_duration = self.logo_video.duration
 
         last_main_time = 0
-        for event in events:
+        for i in range(len(events)):
+            event = events[i]
+            next_event = events[i + 1] if i < len(events) - 1 else None
+            if next_event and next_event.start < event.end + DELAY_BEFORE_REPLAY + 2 * (next_event.start - event.end + REPLAY_BUFFER * 2) + logo_video_duration:
+                continue
             main_clip_before = self.main_video.subclipped(last_main_time, event.end + DELAY_BEFORE_REPLAY + logo_video_duration / 2).with_start(last_main_time)
             logo_clip_before = self.logo_video.with_start(main_clip_before.end - logo_video_duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
             replay_clip = self.main_video.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER).without_audio().with_effects([MultiplySpeed(0.5)]).with_start(main_clip_before.end)
@@ -114,19 +120,27 @@ class Editor:
 
     def save(self, start=0, end=None):
         final_clip = self.composite(start, end)
-        final_clip.write_videofile(f'output.{self.match.match_id}.mp4')
+        final_clip.write_videofile(f'output.{self.match.match_id}.mp4', threads=32, fps=24, preset='ultrafast')
 
     def preview(self, start=0, end=None):
         final_clip = self.composite(start, end)
         final_clip.preview()
 
     def composite(self, start=0, end=None):
+
         final_clip = CompositeVideoClip(self.clips + self.replay_clips + self.scoreboard_clips + self.logo_clips)
         if self.comment_audio:
             final_clip.audio=CompositeAudioClip([final_clip.audio, self.comment_audio])
 
+        final_clip.write_videofile(f'final.{self.match.match_id}.mp4', threads=32, fps=24, preset='ultrafast')
+        final_clip = VideoFileClip(f'final.{self.match.match_id}.mp4')
+
         hightlights_clip = self.create_hightlights_clip(final_clip)
-        final_clip = CompositeVideoClip([final_clip, hightlights_clip.with_start(final_clip.end)])
+        hightlights_clip.write_videofile(f'highlights.{self.match.match_id}.mp4', threads=32, fps=24, preset='ultrafast')
+        hightlights_clip = VideoFileClip(f'highlights.{self.match.match_id}.mp4')
+
+        logo_clip = self.create_logo_clip(final_clip.duration)
+        final_clip = concatenate_videoclips([final_clip, hightlights_clip, logo_clip])
 
         if not end:
             return final_clip
@@ -141,10 +155,10 @@ class Editor:
 
         for event in self.match.events:
             if event.level >= 8:
-                highlight_clip = final_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER).with_start(last_highlight_end)
+                highlight_clip = final_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER + HIGHLIGHT_EXTEND).with_start(last_highlight_end)
                 clips.append(highlight_clip)
                 logo_clips.append(self.create_logo_clip(highlight_clip.end))
-                replay_clip = highlight_clip.with_effects([MultiplySpeed(0.5)]).without_audio().with_start(highlight_clip.end)
+                replay_clip = final_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER).with_effects([MultiplySpeed(0.5)]).without_audio().with_start(highlight_clip.end)
                 clips.append(replay_clip)
                 last_highlight_end = replay_clip.end
                 logo_clips.append(self.create_logo_clip(last_highlight_end))
@@ -177,15 +191,21 @@ class Editor:
     def create_logo_clip(self, time):
         return self.logo_video.with_start(time - self.logo_video.duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
 
-    def create_logo_video(self, logo_path):
-        clip = ImageClip(logo_path).with_effects([Resize(self.main_video.size)])
-        screen_size = self.main_video.size
-        white_blank_image = ImageClip(np.zeros((screen_size[1], screen_size[0], 3), dtype=np.uint8) + 255).with_duration(LOGO_FLY * 2 + LOGO_STAY).with_start(0).with_position(("center", "center"))
+    def create_logo_video(self, stay=LOGO_STAY):
+        clip = self.logo_img
         puff_in_clip = clip.with_effects([Resize(lambda t: (2 * (LOGO_FLY - t) / LOGO_FLY) + 1)]).with_position(("center", "center")).with_duration(LOGO_FLY)
-        stay_clip = clip.with_duration(LOGO_STAY).with_start(puff_in_clip.end).with_position(("center", "center"))
+        stay_clip = clip.with_duration(stay).with_start(puff_in_clip.end).with_position(("center", "center"))
         puff_out_clip = clip.with_effects([Resize(lambda t: 2 * t / LOGO_FLY + 1)]).with_start(stay_clip.end).with_position(("center", "center")).with_duration(LOGO_FLY)
 
-        return CompositeVideoClip([white_blank_image, puff_in_clip, stay_clip, puff_out_clip])
+        CompositeVideoClip([puff_in_clip, stay_clip, puff_out_clip]).write_videofile('logo.mp4', threads=32, fps=24, preset='ultrafast')
+        return VideoFileClip('logo.mp4')
+
+    def load_logo_video(self):
+        if not self.match.logo_video or not os.path.exists(self.match.logo_video):
+            return self.create_logo_video()
+        else:
+            return VideoFileClip(self.match.logo_video).with_effects([Resize(self.main_video.size)])
+
 
 def is_video(path):
     return path.endswith('.mp4') or path.endswith('.avi') or path.endswith('.mov')

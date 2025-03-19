@@ -1,27 +1,11 @@
 import random
+import pickle
+import os
 from comment import Comment
 from utils import ChatAI
 
 IDLE_COMMENT_TIME = 30
 BATCH_SIZE = 10
-EVENT_NAMES = {
-    'start': '比赛开始',
-    'end': '比赛结束',
-    'goal': '进球',
-    'miss': '射门未进',
-    'foul': '犯规',
-    'description': '描述',
-    'pass': '传球',
-    'tackle': '抢断',
-    'corner': '角球',
-    'freekick': '任意球',
-    'penalty': '点球',
-    'breakthrough': '突破',
-    'clearance': '解围',
-    'interception': '拦截',
-    'save': '扑救',
-    'offside': '越位',
-}
 
 class CommentWriter:
     def __init__(self, match):
@@ -32,13 +16,15 @@ class CommentWriter:
         comments = self.match.comments = Comment.load_from_yaml(f'comments.{self.match.match_id}.yaml')
         print(f"loaded {len(comments)} comments")
 
-        if comments:
+        if comments and os.path.exists(f'score_updates.{self.match.match_id}.pkl'):
+            with open(f'score_updates.{self.match.match_id}.pkl', 'rb') as f:
+                self.match.score_updates = pickle.load(f)
             return self.match.comments
 
         match_info = f"比赛名称：{self.match.name}\n"
         match_info += f"{self.match.teams[0].color}队服: {self.match.teams[0].name}队\n"
         match_info += f"{self.match.teams[1].color}队服: {self.match.teams[1].name}队\n"
-        match_info += f"目前是第{self.match.quarter}节，上一节比赛比分是{self.match.teams[0].score}:{self.match.teams[1].score}\n" if self.match.quarter else ""
+        match_info += f"目前是第{self.match.quarter}节，比分是{self.match.teams[0].score}:{self.match.teams[1].score}\n" if self.match.quarter else ""
         match_info += f"其它信息：{self.match.description}\n" if self.match.description else ""
 
         chat_ai = ChatAI()
@@ -47,10 +33,10 @@ class CommentWriter:
         else:
             end_req = "先简短宣布一节比赛结束，然后补充比赛结果和点评，并提醒下一节比赛稍后开始。以下开头供参考：第x节比赛结束；比赛告一段落；裁判吹响了第x节比赛结束的哨声；等等。"
 
-        prompt = f"你是足球解说员\"{self.match.narrator}\"，我会发送给你比赛事件描述和解说要求，每次请生成一行解说词，提及球员名字时请用使用引号（如：6号\"张三\"或\"张三\")。\n"
+        prompt = f"你是足球解说员\"{self.match.narrator}\"，我会发送给你比赛事件描述和解说要求，每次请生成一行解说词，提及球员名字时请用使用引号，如果不知道球员名字就说队员（如：6号\"张三\"或\"张三\"，11号队员等）。\n"
         prompt += "每次事件将以事件代码开头，然后是事件描述。事件代码的含义以及解说要求如下：\n"
         prompt += "idle: 比赛进行中 要求：点评当前比赛情况。以下话题供参考：目前是第x节，比分是x:x；x队攻势十分猛烈；x队防守十分严密；x队应该加强进攻；等等。\n"
-        prompt += "intro: 开场前的介绍 要求：开场解说词\n"
+        prompt += "intro: 开场前的介绍 要求：开场解说词，如果不是第一节，请补充上一节比分是x:x\n"
         prompt += "start: 比赛开始 要求：简短宣布比赛开始\n"
         prompt += "end: 比赛结束 要求：" + end_req
         prompt += "goal: 进球 要求：简短，以\"球进啦！\"、\"进了！\"、\"好球！\"等开头\n"
@@ -60,6 +46,9 @@ class CommentWriter:
         prompt += "penalty: 点球\n"
         prompt += "breakthrough: 突破\n"
         prompt += "save: 扑救\n"
+        prompt += "kickoff: 开球\n"
+        prompt += "tackle: 抢断\n"
+        prompt += "pass: 传球\n"
         prompt += "以下比赛信息供参考：\n" + match_info
         prompt += "明白请回复\"ok\""
         
@@ -90,6 +79,9 @@ class CommentWriter:
                 comments.append(self.event_comment(chat_ai, event))
 
             last_comment_time = event.end
+
+        with open(f'score_updates.{self.match.match_id}.pkl', 'wb') as f:
+            pickle.dump(self.match.score_updates, f)
 
         Comment.save_to_yaml(f'comments.{self.match.match_id}.yaml', comments)
 

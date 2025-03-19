@@ -37,4 +37,4 @@ class Voicer:
         return os.path.join(VOICE_DIR, self.voice_name(comment))
 
     def voice_name(self, comment):
-        return f"{format_time(comment.time, 0, False)}-{hashlib.md5(comment.text.encode('utf-8')).hexdigest()}.mp3"
+        return f"{hashlib.md5(comment.text.encode('utf-8')).hexdigest()}.mp3"

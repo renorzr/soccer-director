@@ -11,7 +11,8 @@ class Match:
         self.description = obj.get('description', '')
         self.teams = [Team(obj['name'], obj['color'], obj.get('code'), obj.get('score', 0)) for obj in obj['teams']]
         self.main_video = obj.get('main_video', f'{match_id}.mp4')
-        self.logo = obj.get('logo', 'logo.png')
+        self.logo_img = obj.get('logo_img', 'logo.png')
+        self.logo_video = obj.get('logo_video', 'logo.mp4')
         self.bgm = obj.get('bgm', 'bgm.mp3')
         self.start = parse_time(obj.get('start', 0))
         self.end = parse_time(obj.get('end'))
