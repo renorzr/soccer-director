@@ -1,8 +1,12 @@
-from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, ImageClip, concatenate_videoclips
+from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, ImageClip, concatenate_videoclips, TextClip
 from moviepy.video.fx import MultiplySpeed, Resize, CrossFadeIn, CrossFadeOut
 import numpy as np
 import os
+from voicer import Voicer
+from utils import format_time
+from event import Tag
 
+PREVIEW_BUFFER = 2
 DELAY_BEFORE_REPLAY = 6
 REPLAY_BUFFER = 2
 HIGHLIGHT_EXTEND = 1
@@ -11,41 +15,59 @@ LOGO_STAY = 0.5
 LOGO_FLY = 0.8
 
 class Editor:
-    def __init__(self, match):
-        self.match = match
+    def __init__(self, game):
+        self.game = game
+        self.voicer = Voicer(game)
         self.clips = []
         self.logo_clips = []
         self.replay_clips = []
         self.scoreboard_clips = []
-        self.main_video = VideoFileClip(self.match.main_video)
-        self.logo_img = ImageClip(self.match.logo_img).with_effects([Resize(self.main_video.size)])
+        self.main_video = VideoFileClip(self.game.main_video)
+        self.logo_img = ImageClip(self.game.logo_img).with_effects([Resize(self.main_video.size)])
         self.logo_video = self.load_logo_video()
-        self.bgm = AudioFileClip(self.match.bgm) if self.match.bgm and os.path.exists(self.match.bgm) else None
+        self.bgm = AudioFileClip(self.game.bgm) if self.game.bgm and os.path.exists(self.game.bgm) else None
         self.comment_audio = None
 
+    
+    def preview(self):
+        self.add_comment_voices()
+        print(f"comment audio duration: {self.comment_audio.duration}")
 
-    def edit(self, voicer=None):
+        clips = []
+        for index, event in enumerate(self.game.events):
+            if event.type.level < 8:
+                continue
+            clip = self.main_video.subclipped(event.time - PREVIEW_BUFFER, event.time + PREVIEW_BUFFER)
+            clip.audio = self.comment_audio.subclipped(event.time - PREVIEW_BUFFER, event.time + PREVIEW_BUFFER)
+            text_clip = TextClip(text=f"event-{index}: {event.type} {format_time(event.time)}", font_size=24, color='white', font='ROGFonts-Regular_0.otf').with_duration(clip.duration)
+            clips.append(CompositeVideoClip([clip, text_clip.with_position(("center", "top"))]))
+
+        concatenate_videoclips(clips).write_videofile('preview.mp4', threads=32, fps=16, preset='ultrafast')
+
+
+
+    def edit(self):
+        if os.path.exists(f'game.{self.game.game_id}.mp4'):
+            print(f"game {self.game.game_id} already exists, skipping")
+            return
+
         self.create_replays()
         self.create_scoreboards()
-        if voicer is not None:
-            self.add_comment_voices(voicer)
+        self.add_comment_voices()
 
 
     def create_replays(self):
-        # pick most important events
-        events = [e for e in self.match.events if e.level >= 8]
-
+        # pick replay events
+        replay_events = self.calculate_replay_times()
+        print(f"found {len(replay_events)} replay events")
         logo_video_duration = self.logo_video.duration
 
         last_main_time = 0
-        for i in range(len(events)):
-            event = events[i]
-            next_event = events[i + 1] if i < len(events) - 1 else None
-            if next_event and next_event.start < event.end + DELAY_BEFORE_REPLAY + 2 * (next_event.start - event.end + REPLAY_BUFFER * 2) + logo_video_duration:
-                continue
-            main_clip_before = self.main_video.subclipped(last_main_time, event.end + DELAY_BEFORE_REPLAY + logo_video_duration / 2).with_start(last_main_time)
+        for event in replay_events:
+            print(f"Replay event {event.type.name}: {format_time(event.time)}")
+            main_clip_before = self.main_video.subclipped(last_main_time, event.replay_time + logo_video_duration / 2).with_start(last_main_time)
             logo_clip_before = self.logo_video.with_start(main_clip_before.end - logo_video_duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
-            replay_clip = self.main_video.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER).without_audio().with_effects([MultiplySpeed(0.5)]).with_start(main_clip_before.end)
+            replay_clip = self.main_video.subclipped(event.time - REPLAY_BUFFER, event.time + REPLAY_BUFFER).without_audio().with_effects([MultiplySpeed(0.5)]).with_start(main_clip_before.end)
             logo_clip_after = self.logo_video.with_start(replay_clip.end - logo_video_duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
             last_main_time = last_main_time + main_clip_before.duration + replay_clip.duration
             replay_clip.audio = self.main_video.audio.subclipped(replay_clip.start, replay_clip.end).with_start(replay_clip.start)
@@ -60,17 +82,55 @@ class Editor:
             self.clips.append(main_clip_after)
 
 
+    def calculate_replay_times(self):
+        # 获取所有需要重放的事件
+        replay_events = [e for e in self.game.events if Tag.Replay in e.tags]
+        if not replay_events:
+            return
+
+        # 获取所有deadball时间段
+        deadballs = self.game.deadballs
+        if not deadballs:
+            return
+
+        # 按时间正序排序deadball和重放事件
+        deadballs.sort(key=lambda x: x.time)
+        replay_events.sort(key=lambda x: x.time)
+
+        replay_duration = REPLAY_BUFFER * 2 * 2
+
+        for deadball in deadballs:
+            # 如果deadball时间太短，跳过
+            if deadball.duration < replay_duration:
+                continue
+            
+            # 找到deadball之前最近的事件
+            nearest_event = None
+            for event in replay_events:
+                if event.time <= deadball.time:
+                    nearest_event = event
+                else:
+                    break
+            
+            if nearest_event:
+                # 计算居中播放的时间
+                center_time = deadball.time + (deadball.duration - replay_duration) / 2
+                nearest_event.replay_time = center_time
+        
+        return [e for e in replay_events if e.replay_time]
+
+
     def create_scoreboards(self):
-        if not self.match.score_updates:
+        if not self.game.score_updates:
             # 如果没有任何比分更新，创建一个0:0的记分牌从开始到结束
-            self.render_scoreboard(self.match.start, self.match.end, 0, 0)
+            self.render_scoreboard(self.game.start, self.game.end, 0, 0)
             return
 
         # 从后往前处理每个更新
-        updates = self.match.score_updates
+        updates = self.game.score_updates
         for i in range(len(updates) - 1, -1, -1):
             current_update = updates[i]
-            next_time = self.match.end if i == len(updates) - 1 else updates[i + 1].time
+            next_time = self.game.end if i == len(updates) - 1 else updates[i + 1].time
             
             self.render_scoreboard(
                 current_update.time,
@@ -80,24 +140,25 @@ class Editor:
             )
         
         # 处理比赛开始到第一次更新之间的时间段
-        if updates[0].time > self.match.start:
-            self.render_scoreboard(self.match.start, updates[0].time, 0, 0)
+        if updates[0].time > self.game.start:
+            self.render_scoreboard(self.game.start, updates[0].time, 0, 0)
 
 
     def render_scoreboard(self, start_time, end_time, score0, score1):
         print(f"render scoreboard {start_time} to {end_time} with {score0}:{score1}")
         self.scoreboard_clips.append(
-            self.match.scoreboard.render(self.match.game_time(start_time), end_time - start_time, score0, score1)
+            self.game.scoreboard.render(self.game.game_time(start_time), end_time - start_time, score0, score1)
                 .with_start(start_time)
                 .with_position(("center", "bottom"))
         )
         
 
-    def add_comment_voices(self, voicer):
+    def add_comment_voices(self):
+        self.voicer.make_voice()
         audio_clips = []
         last_comment = None
-        for comment in self.match.comments:
-            voice_path = voicer.get_voice(comment)
+        for comment in self.game.comments:
+            voice_path = self.voicer.get_voice(comment.text)
             print(f"voice path: {voice_path}")
             voice_clip = AudioFileClip(voice_path).with_volume_scaled(2)
             last_comment_end = last_comment.time + audio_clips[-1].duration if last_comment else 0
@@ -118,52 +179,59 @@ class Editor:
             last_comment = comment
         self.comment_audio = CompositeAudioClip(audio_clips)
 
+
     def save(self, start=0, end=None):
         final_clip = self.composite(start, end)
-        final_clip.write_videofile(f'output.{self.match.match_id}.mp4', threads=32, fps=24, preset='ultrafast')
+        final_clip.write_videofile(f'output.{self.game.game_id}.mp4', threads=32, fps=24, preset='ultrafast')
 
-    def preview(self, start=0, end=None):
-        final_clip = self.composite(start, end)
-        final_clip.preview()
 
     def composite(self, start=0, end=None):
+        game_file = f'game.{self.game.game_id}.mp4'
+        if not os.path.exists(game_file):
+            game_clip = CompositeVideoClip(self.clips + self.replay_clips + self.scoreboard_clips + self.logo_clips)
+            if self.comment_audio:
+                game_clip.audio=CompositeAudioClip([game_clip.audio, self.comment_audio])
+                game_clip.write_videofile(game_file, threads=32, fps=24, preset='ultrafast')
+        game_clip = VideoFileClip(game_file)
 
-        final_clip = CompositeVideoClip(self.clips + self.replay_clips + self.scoreboard_clips + self.logo_clips)
-        if self.comment_audio:
-            final_clip.audio=CompositeAudioClip([final_clip.audio, self.comment_audio])
+        if end:
+            print(f"Subclipping from {format_time(start)} to {format_time(end)}")
+            return game_clip.subclipped(start, end)
 
-        final_clip.write_videofile(f'final.{self.match.match_id}.mp4', threads=32, fps=24, preset='ultrafast')
-        final_clip = VideoFileClip(f'final.{self.match.match_id}.mp4')
+        highlights_file = f'highlights.{self.game.game_id}.mp4'
+        if not os.path.exists(highlights_file):
+            hightlights_clip = self.create_hightlights_clip(game_clip, comment="下面请观看本场比赛的精彩瞬间")
+            hightlights_clip.write_videofile(highlights_file, threads=32, fps=24, preset='ultrafast')
+        hightlights_clip = VideoFileClip(highlights_file)
 
-        hightlights_clip = self.create_hightlights_clip(final_clip)
-        hightlights_clip.write_videofile(f'highlights.{self.match.match_id}.mp4', threads=32, fps=24, preset='ultrafast')
-        hightlights_clip = VideoFileClip(f'highlights.{self.match.match_id}.mp4')
+        logo_clip = self.create_logo_clip(0)
 
-        logo_clip = self.create_logo_clip(final_clip.duration)
-        final_clip = concatenate_videoclips([final_clip, hightlights_clip, logo_clip])
+        return concatenate_videoclips([logo_clip, game_clip, hightlights_clip])
 
-        if not end:
-            return final_clip
 
-        print(f"Subclipping from {start} to {end}")
-        return final_clip.subclipped(start, end)
-
-    def create_hightlights_clip(self, final_clip):
+    def create_hightlights_clip(self, game_clip, type=None, comment=None):
         clips = []
         logo_clips = []
-        last_highlight_end = 0
+        last_highlight_end = logo_clips[-1].end
 
-        for event in self.match.events:
-            if event.level >= 8:
-                highlight_clip = final_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER + HIGHLIGHT_EXTEND).with_start(last_highlight_end)
+        for event in self.game.events:
+            if event.level >= 8 and (type is None or event.type == type):
+                logo_clips.append(self.create_logo_clip(last_highlight_end))
+                highlight_clip = game_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER + HIGHLIGHT_EXTEND).with_start(last_highlight_end)
                 clips.append(highlight_clip)
                 logo_clips.append(self.create_logo_clip(highlight_clip.end))
-                replay_clip = final_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER).with_effects([MultiplySpeed(0.5)]).without_audio().with_start(highlight_clip.end)
+                replay_clip = game_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER).with_effects([MultiplySpeed(0.5)]).without_audio().with_start(highlight_clip.end)
                 clips.append(replay_clip)
                 last_highlight_end = replay_clip.end
-                logo_clips.append(self.create_logo_clip(last_highlight_end))
 
         highlights_clip = CompositeVideoClip(clips + logo_clips)
+        audio_clips = [highlights_clip.audio]
+
+        if comment:
+            voice = self.voicer.make_text_voice(comment)
+            voice_clip = AudioFileClip(voice).with_volume_scaled(2)
+            audio_clips.append(voice_clip)
+            audio_clips[0] = audio_clips[0].subclipped(voice_clip.duration, audio_clips[0].duration)
 
         if self.bgm:
             bgm_clips = []
@@ -178,7 +246,10 @@ class Editor:
                 bgm_clips.append(current_bgm_clip.with_start(last_bgm_end))
                 last_bgm_end = bgm_clips[-1].end
                 
-            highlights_clip.audio = CompositeAudioClip([highlights_clip.audio, *bgm_clips])
+            audio_clips.extend(bgm_clips)
+
+        if len(audio_clips) > 1:
+            highlights_clip.audio = CompositeAudioClip(audio_clips)
 
         return highlights_clip
 
@@ -201,11 +272,8 @@ class Editor:
         return VideoFileClip('logo.mp4')
 
     def load_logo_video(self):
-        if not self.match.logo_video or not os.path.exists(self.match.logo_video):
+        if not self.game.logo_video or not os.path.exists(self.game.logo_video):
             return self.create_logo_video()
         else:
-            return VideoFileClip(self.match.logo_video).with_effects([Resize(self.main_video.size)])
+            return VideoFileClip(self.game.logo_video).with_effects([Resize(self.main_video.size)])
 
-
-def is_video(path):
-    return path.endswith('.mp4') or path.endswith('.avi') or path.endswith('.mov')

@@ -3,16 +3,16 @@ from utils import format_time
 
 
 class TextProp:
-    def __init__(self, left, top, width, height, color=None):
+    def __init__(self, left, top, width, height, color=None, font=None):
         self.left = left
         self.top = top
         self.width = width
         self.height = height
         self.color = color
-
+        self.font = font
     @classmethod
     def from_dict(cls, obj):
-        return cls(obj['left'], obj['top'], obj['width'], obj['height'], obj.get('color')) if obj is not None else None
+        return cls(obj['left'], obj['top'], obj['width'], obj['height'], color=obj.get('color'), font=obj.get('font')) if obj is not None else None
 
 class Scoreboard:
     def __init__(self, img: str, texts: dict, textprops: dict):
@@ -24,6 +24,7 @@ class Scoreboard:
     @classmethod
     def from_dict(cls, texts, obj):
         textprops = {}
+        img = 'scoreboard.png'
         for key, value in obj.items():
             if key == 'img':
                 img = value
@@ -58,7 +59,7 @@ class Scoreboard:
 
 def render_text(text, textprop, time, duration):
     return TextClip(text=text, 
-                    font="ROGFonts-Regular_0.otf", 
+                    font=textprop.font or "ROGFonts-Regular_0.otf", 
                     color=textprop.color or 'white',
                     size=(textprop.width, textprop.height)) \
         .with_duration(duration).with_start(time).with_position((textprop.left, textprop.top)) \
@@ -66,11 +67,12 @@ def render_text(text, textprop, time, duration):
 
 
 if __name__ == '__main__':
+    font = 'SourceHanSansSC-Medium.otf'
     b = Scoreboard.from_dict(
         {
             'title': 'Soccer Match',
-            'team0': 'GNK',
-            'team1': 'SKR',
+            'team0': '银杏',
+            'team1': '樱花',
             'quarter': 'Q2',
         },
         {
@@ -98,12 +100,14 @@ if __name__ == '__main__':
             'top': 30,
             'width': 70,
             'height': 25,
+            'font': font
         },
         'team1': {
             'left': 230,
             'top': 30,
             'width': 70,
             'height': 25,
+            'font': font
         },
         'time': {
             'left': 145,
