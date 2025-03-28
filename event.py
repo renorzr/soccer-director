@@ -7,12 +7,13 @@ import string
 from enum import Enum
 
     
+# 事件标签
 class Tag(Enum):
-    Replay = 1,
-    Deadball = 2,
-    Liveball = 3,
+    Replay = 1,   # 发生的事件需要重放
+    Deadball = 2, # 比赛进入死球状态
+    Liveball = 3, # 比赛进入活球状态
 
-
+# 事件类型
 class EventType(Enum):
     Start = 6, [Tag.Liveball], "比赛开始", "简短宣布比赛开始"
     End = 7, [Tag.Deadball], "比赛结束", "如果不是最后一节(第4节)，首先宣布一节比赛结束（如：第x节比赛结束；比赛告一段落；裁判吹响了第x节比赛结束的哨声；等等），然后补充比赛结果和点评，最后提醒观众下一节比赛稍后开始。如果是最后一节，宣布比赛结束（如：终场哨响；全场比赛结束；裁判员吹响了终场哨；比赛结束；等等。），然后补充比赛结果和点评，最后感谢观众收看。"
@@ -36,6 +37,7 @@ class EventType(Enum):
         self.req = req
 
 
+# 事件
 class Event:
     HEADERS = ['id', 'time', 'type', 'team', 'player', 'tags', 'desc']
 

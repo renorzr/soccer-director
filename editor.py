@@ -14,7 +14,9 @@ INTERRUPT_BUFFER = 0.5
 LOGO_STAY = 0.5
 LOGO_FLY = 0.8
 
+# 剪辑器
 class Editor:
+    # 初始化剪辑器
     def __init__(self, game):
         self.game = game
         self.voicer = Voicer(game)
@@ -28,7 +30,7 @@ class Editor:
         self.bgm = AudioFileClip(self.game.bgm) if self.game.bgm and os.path.exists(self.game.bgm) else None
         self.comment_audio = None
 
-    
+    # 预览比赛视频中配音解说的部分
     def preview(self):
         self.add_comment_voices()
         print(f"comment audio duration: {self.comment_audio.duration}")
@@ -42,10 +44,11 @@ class Editor:
             text_clip = TextClip(text=f"event-{index}: {event.type} {format_time(event.time)}", font_size=24, color='white', font='ROGFonts-Regular_0.otf').with_duration(clip.duration)
             clips.append(CompositeVideoClip([clip, text_clip.with_position(("center", "top"))]))
 
+        # 连接有解说的片段并保存为预览视频
         concatenate_videoclips(clips).write_videofile('preview.mp4', threads=32, fps=16, preset='ultrafast')
 
 
-
+    # 剪辑比赛视频
     def edit(self):
         if os.path.exists(f'game.{self.game.game_id}.mp4'):
             print(f"game {self.game.game_id} already exists, skipping")
@@ -56,6 +59,7 @@ class Editor:
         self.add_comment_voices()
 
 
+    # 创建重放片段
     def create_replays(self):
         # pick replay events
         replay_events = self.calculate_replay_times()
@@ -81,7 +85,7 @@ class Editor:
             main_clip_after = self.main_video.subclipped(last_main_time, self.main_video.duration).with_start(last_main_time)
             self.clips.append(main_clip_after)
 
-
+    # 计算重放片段的时间
     def calculate_replay_times(self):
         # 获取所有需要重放的事件
         replay_events = [e for e in self.game.events if Tag.Replay in e.tags]
@@ -123,7 +127,7 @@ class Editor:
         
         return [e for e in replay_events if e.replay_time]
 
-
+    # 创建记分牌片段
     def create_scoreboards(self):
         if not self.game.score_updates:
             # 如果没有任何比分更新，创建一个0:0的记分牌从开始到结束
@@ -150,7 +154,7 @@ class Editor:
         if updates[0].time > self.game.start:
             self.render_scoreboard(self.game.start, updates[0].time, 0, 0)
 
-
+    # 渲染记分牌片段
     def render_scoreboard(self, start_time, end_time, score0, score1):
         print(f"render scoreboard {start_time} to {end_time} with {score0}:{score1}")
         self.scoreboard_clips.append(
@@ -159,7 +163,7 @@ class Editor:
                 .with_position(("center", "bottom"))
         )
         
-
+    # 添加配音解说
     def add_comment_voices(self):
         self.voicer.make_voice()
         audio_clips = []
@@ -186,12 +190,12 @@ class Editor:
             last_comment = comment
         self.comment_audio = CompositeAudioClip(audio_clips)
 
-
+    # 保存比赛视频
     def save(self, start=0, end=None):
         final_clip = self.composite(start, end)
         final_clip.write_videofile(f'output.{self.game.game_id}.mp4', threads=32, fps=24, preset='ultrafast')
 
-
+    # 合成比赛视频
     def composite(self, start=0, end=None):
         game_file = f'game.{self.game.game_id}.mp4'
         if not os.path.exists(game_file):
@@ -215,7 +219,7 @@ class Editor:
 
         return concatenate_videoclips([logo_clip, game_clip, hightlights_clip])
 
-
+    # 创建精彩瞬间片段
     def create_hightlights_clip(self, game_clip, type=None, comment=None):
         clips = []
         logo_clips = []
@@ -259,15 +263,19 @@ class Editor:
 
         return highlights_clip
 
+    # 获取视频帧
     def get_frame(self, time):
         return self.main_video.get_frame(time)
 
+    # 获取视频时长
     def get_duration(self):
         return self.main_video.duration
 
+    # 创建logo片段
     def create_logo_clip(self, time):
         return self.logo_video.with_start(time - self.logo_video.duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
 
+    # 创建logo视频
     def create_logo_video(self, stay=LOGO_STAY):
         clip = self.logo_img
         puff_in_clip = clip.with_effects([Resize(lambda t: (2 * (LOGO_FLY - t) / LOGO_FLY) + 1)]).with_position(("center", "center")).with_duration(LOGO_FLY)
@@ -277,6 +285,7 @@ class Editor:
         CompositeVideoClip([puff_in_clip, stay_clip, puff_out_clip]).write_videofile('logo.mp4', threads=32, fps=24, preset='ultrafast')
         return VideoFileClip('logo.mp4')
 
+    # 加载logo片段
     def load_logo_video(self):
         if not self.game.logo_video or not os.path.exists(self.game.logo_video):
             return self.create_logo_video()

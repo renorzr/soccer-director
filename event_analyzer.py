@@ -9,16 +9,15 @@ from deadball import Deadball
 IDLE_COMMENT_TIME = 30
 BATCH_SIZE = 10
 
-
-
+# 事件分析器
 class EventAnalyzer:
+    # 初始化事件分析器
     def __init__(self, game):
         self.game = game
         self.current_deadball = None
 
-
+    # 分析事件(生成解说词, 更新比分, 更新死球状态)
     def analyze(self):
-
         if os.path.exists(f'game.{self.game.game_id}.pkl'):
             with open(f'game.{self.game.game_id}.pkl', 'rb') as f:
                 game_data = pickle.load(f)
@@ -75,16 +74,18 @@ class EventAnalyzer:
         with open(f'game.{self.game.game_id}.pkl', 'wb') as f:
             pickle.dump({'comments': comments, 'score_updates': self.game.score_updates, 'deadballs': self.game.deadballs}, f)
 
-
+    # 生成事件解说词
     def event_comment(self, chat_ai, event):
         text = chat_ai.chat(self.event_prompt(event))
         return Comment(event.time, text, 'event', event.id, event.type.level)
 
+    # 生成事件解说词提示
     def event_prompt(self, event):
         subject = self.game.teams[event.team].name if event.team is not None else ""
         subject += f"队的{event.player or '队员'}" if subject else ""
         return f"{event.type.name}: {subject} {event.desc or ''}"
 
+    # 更新死球状态
     def update_deadball(self, event):
         if Tag.Deadball in event.tags and self.current_deadball is None:
             self.current_deadball = Deadball(event.time)
@@ -93,9 +94,7 @@ class EventAnalyzer:
             self.game.deadballs.append(self.current_deadball)
             self.current_deadball = None
 
-    def clean(self):
-        os.remove(f"game.{self.game.game_id}.pkl")
 
-
+# 射门解说词
 def shoot_text():
     return random.choice(['打门！', '射门！'])
