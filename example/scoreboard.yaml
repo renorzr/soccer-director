@@ -1,0 +1,30 @@
+quarter:
+  left: 170
+  top: 70
+  width: 30
+  height: 10
+score0:
+  left: 12
+  top: 32
+  width: 20
+  height: 20
+score1:
+  left: 327
+  top: 32
+  width: 18
+  height: 18
+team0:
+  left: 50
+  top: 30
+  width: 70
+  height: 25
+team1:
+  left: 230
+  top: 30
+  width: 70
+  height: 25
+time:
+  left: 145
+  top: 30
+  width: 65
+  height: 20

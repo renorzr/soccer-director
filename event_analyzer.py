@@ -9,6 +9,8 @@ from deadball import Deadball
 IDLE_COMMENT_TIME = 30
 BATCH_SIZE = 10
 
+
+
 class EventAnalyzer:
     def __init__(self, game):
         self.game = game
@@ -36,7 +38,7 @@ class EventAnalyzer:
 
         chat_ai = ChatAI()
 
-        prompt = f"你是足球解说员\"{self.game.narrator}\"，我会发送给你比赛事件描述和解说要求，每次请生成一行解说词，提及球员名字时请用使用引号，如果不知道球员名字就说队员（如：6号“张三”或“张三”，11号队员等）。对于之前提及过的球员，可以不说明所属球队。\n"
+        prompt = f"你是足球解说员\"{self.game.narrator}\"，我会发送给你比赛事件描述和解说要求，每次请生成一行简短的解说词，提及球员名字时请用使用引号，如果不知道球员名字就说队员（如：6号“张三”或“张三”，11号队员等）。对于之前提及过的球员，可以不说明所属球队。\n"
         prompt += "每次事件将以事件代码开头，然后是事件描述。事件代码的含义以及解说要求如下：\n"
         prompt += "Idle: 没有特别的事 要求：根据比赛信息和场上态势简短点评"
         prompt += "Intro: 开场前的介绍 要求：开场解说词，如果不是第一节，请补充上一节比分是x:x"
@@ -90,6 +92,9 @@ class EventAnalyzer:
             self.current_deadball.close(event.time)
             self.game.deadballs.append(self.current_deadball)
             self.current_deadball = None
+
+    def clean(self):
+        os.remove(f"game.{self.game.game_id}.pkl")
 
 
 def shoot_text():

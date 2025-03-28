@@ -21,6 +21,9 @@ def parse_time(value):
 
 
 def format_time(seconds, decimal_places=1, use_separator=True):
+    if seconds is None:
+        return None
+
     minutes = int(seconds // 60)
     seconds = seconds % 60
     

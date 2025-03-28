@@ -12,6 +12,7 @@ class Deadball:
     def close(self, time):
         self.end = time
 
+    @property
     def duration(self):
         return self.end - self.start
 

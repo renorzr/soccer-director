@@ -47,6 +47,7 @@ class Event:
         self.desc = desc
         self.tags = tags
         self.id = id or f"{type.name}_{team}_{''.join(random.choices(string.ascii_lowercase + string.digits, k=10))}"
+        self.replay_time = None
 
     @classmethod
     def load_from_csv(cls, file_path):

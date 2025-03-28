@@ -9,7 +9,7 @@ from event import Tag
 PREVIEW_BUFFER = 2
 DELAY_BEFORE_REPLAY = 6
 REPLAY_BUFFER = 2
-HIGHLIGHT_EXTEND = 1
+HIGHLIGHT_BUFFER = 3
 INTERRUPT_BUFFER = 0.5
 LOGO_STAY = 0.5
 LOGO_FLY = 0.8
@@ -94,28 +94,32 @@ class Editor:
             return
 
         # 按时间正序排序deadball和重放事件
-        deadballs.sort(key=lambda x: x.time)
+        deadballs.sort(key=lambda x: x.start)
         replay_events.sort(key=lambda x: x.time)
 
         replay_duration = REPLAY_BUFFER * 2 * 2
 
         for deadball in deadballs:
+            print(f"calculate replay in deadball [{format_time(deadball.start)}-{format_time(deadball.end)}]")
             # 如果deadball时间太短，跳过
             if deadball.duration < replay_duration:
+                print("duration is too short, skipping")
                 continue
             
             # 找到deadball之前最近的事件
             nearest_event = None
             for event in replay_events:
-                if event.time <= deadball.time:
-                    nearest_event = event
+                if event.time <= deadball.start:
+                    if event.replay_time is None:
+                        nearest_event = event
                 else:
                     break
             
             if nearest_event:
                 # 计算居中播放的时间
-                center_time = deadball.time + (deadball.duration - replay_duration) / 2
+                center_time = deadball.start + (deadball.duration - replay_duration) / 2
                 nearest_event.replay_time = center_time
+                print(f"replay event: {nearest_event.type.name} {format_time(nearest_event.time)} at {format_time(center_time)}")
         
         return [e for e in replay_events if e.replay_time]
 
@@ -126,11 +130,12 @@ class Editor:
             self.render_scoreboard(self.game.start, self.game.end, 0, 0)
             return
 
+        print('score_updates:', self.game.score_updates)
         # 从后往前处理每个更新
         updates = self.game.score_updates
+        next_time = self.game.end
         for i in range(len(updates) - 1, -1, -1):
             current_update = updates[i]
-            next_time = self.game.end if i == len(updates) - 1 else updates[i + 1].time
             
             self.render_scoreboard(
                 current_update.time,
@@ -138,6 +143,8 @@ class Editor:
                 current_update.score0,
                 current_update.score1
             )
+
+            next_time = current_update.time
         
         # 处理比赛开始到第一次更新之间的时间段
         if updates[0].time > self.game.start:
@@ -212,15 +219,14 @@ class Editor:
     def create_hightlights_clip(self, game_clip, type=None, comment=None):
         clips = []
         logo_clips = []
-        last_highlight_end = logo_clips[-1].end
+        last_highlight_end = 0
 
         for event in self.game.events:
-            if event.level >= 8 and (type is None or event.type == type):
+            if Tag.Replay in event.tags:
                 logo_clips.append(self.create_logo_clip(last_highlight_end))
-                highlight_clip = game_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER + HIGHLIGHT_EXTEND).with_start(last_highlight_end)
-                clips.append(highlight_clip)
-                logo_clips.append(self.create_logo_clip(highlight_clip.end))
-                replay_clip = game_clip.subclipped(event.start - REPLAY_BUFFER, event.end + REPLAY_BUFFER).with_effects([MultiplySpeed(0.5)]).without_audio().with_start(highlight_clip.end)
+                highlight_clip = game_clip.subclipped(event.time - HIGHLIGHT_BUFFER, event.time + HIGHLIGHT_BUFFER).with_start(last_highlight_end)
+                clips.append(highlight_clip.copy())
+                replay_clip = highlight_clip.with_effects([MultiplySpeed(0.5)]).without_audio().with_start(highlight_clip.end)
                 clips.append(replay_clip)
                 last_highlight_end = replay_clip.end
 
@@ -231,7 +237,7 @@ class Editor:
             voice = self.voicer.make_text_voice(comment)
             voice_clip = AudioFileClip(voice).with_volume_scaled(2)
             audio_clips.append(voice_clip)
-            audio_clips[0] = audio_clips[0].subclipped(voice_clip.duration, audio_clips[0].duration)
+            audio_clips[0] = audio_clips[0].subclipped(voice_clip.duration, audio_clips[0].duration).with_start(voice_clip.duration)
 
         if self.bgm:
             bgm_clips = []
@@ -276,4 +282,5 @@ class Editor:
             return self.create_logo_video()
         else:
             return VideoFileClip(self.game.logo_video).with_effects([Resize(self.main_video.size)])
+
 

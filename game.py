@@ -1,6 +1,6 @@
 from utils import parse_time
 from team import Team
-from event import Event
+from event import Event, EventType
 from scoreboard import Scoreboard
 import os
 import yaml
@@ -19,9 +19,7 @@ class Game:
         self.logo_video = obj.get('logo_video', 'logo.mp4')
         self.bgm = obj.get('bgm', 'bgm.mp3')
         self.prev_time = parse_time(obj.get('prev_time', 0))
-        self.bias = obj.get('bias', 0.2)
         self.quarter = obj.get('quarter')
-        self.intro = obj.get('intro')
         self.narrator = obj.get('narrator', '云说')
         self.events = Event.load_from_csv(f'events.{game_id}.csv')
         self.comments = []
@@ -42,13 +40,13 @@ class Game:
     def load_start_and_end(self):
         # find the first event with type 'start'
         for event in self.events:
-            if event.type == 'start':
-                self.start = event.start
+            if event.type == EventType.Start:
+                self.start = event.time
                 break
         # find the last event with type 'end'
         for event in self.events:
-            if event.type == 'end':
-                self.end = event.start
+            if event.type == EventType.End:
+                self.end = event.time
 
     def update_score(self, time, team=None, score=None):
         if team is not None:
