@@ -75,7 +75,7 @@ class Event:
 
     @classmethod
     def save_to_csv(cls, file_path, events):
-        with open(file_path, 'w', newline='') as f:
+        with open(file_path, 'w', newline='', encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(cls.HEADERS)
             writer.writerows([e.to_row() for e in events])

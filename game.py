@@ -30,7 +30,7 @@ class Game:
             scoreboard_props = yaml.safe_load(f)
 
         self.scoreboard = Scoreboard.from_dict(
-            {'title': self.name, 'team0': self.teams[0].code, 'team1': self.teams[1].code, 'quarter': 'Q' + str(self.quarter)}, 
+            {'title': self.name, 'team0': self.teams[0].code, 'team1': self.teams[1].code, 'quarter': f"第{str(self.quarter)}节"}, 
             scoreboard_props)
 
         self.score_updates.append(ScoreUpdate(self.start, self.teams[0].score, self.teams[1].score))

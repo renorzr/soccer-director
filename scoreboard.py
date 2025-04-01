@@ -1,5 +1,8 @@
+import os
 from moviepy import ImageClip, TextClip, CompositeVideoClip
 from utils import format_time
+
+DEFAULT_FONT = 'SourceHanSansSC-Medium'
 
 
 class TextProp:
@@ -58,22 +61,26 @@ class Scoreboard:
 
 
 def render_text(text, textprop, time, duration):
+    font = find_font(textprop.font)
     return TextClip(text=text, 
-                    font=textprop.font or "ROGFonts-Regular_0.otf", 
+                    font=font,
                     color=textprop.color or 'white',
                     size=(textprop.width, textprop.height)) \
         .with_duration(duration).with_start(time).with_position((textprop.left, textprop.top)) \
             if textprop is not None else None
 
+def find_font(font_name):
+    (dir, file) = os.path.split(__file__)
+    return os.path.join(dir, 'fonts', (font_name or DEFAULT_FONT) + '.otf')
+
 
 if __name__ == '__main__':
-    font = 'SourceHanSansSC-Medium.otf'
     b = Scoreboard.from_dict(
         {
             'title': 'Soccer Match',
             'team0': '银杏',
             'team1': '樱花',
-            'quarter': 'Q2',
+            'quarter': '第2节',
         },
         {
         'img': '../soccer-demo/scoreboard.png',
@@ -100,14 +107,12 @@ if __name__ == '__main__':
             'top': 30,
             'width': 70,
             'height': 25,
-            'font': font
         },
         'team1': {
             'left': 230,
             'top': 30,
             'width': 70,
             'height': 25,
-            'font': font
         },
         'time': {
             'left': 145,
