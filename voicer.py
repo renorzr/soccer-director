@@ -1,12 +1,12 @@
 import time
 import os
 import dashscope
-from dashscope.audio.tts_v2 import SpeechSynthesizer
-from utils import format_time
 import hashlib
+from fish_audio_sdk import Session, TTSRequest, Prosody
 
 VOICE_DIR = 'voices'
 dashscope.api_key=os.getenv("DASHSCOPE_API_KEY")
+session = Session(os.getenv('FISH_AUDIO_API_KEY'))
 
 class Voicer:
     def __init__(self, match):
@@ -30,10 +30,12 @@ class Voicer:
         # generate and save voice
         time.sleep(1)
         print(f"generating voice for comment {text} with path {voice_path}")
-        synthesizer = SpeechSynthesizer(model="cosyvoice-v1", voice="longshuo")
-        audio = synthesizer.call(text)
         with open(voice_path, 'wb') as f:
-            f.write(audio)
+            for chunk in session.tts(TTSRequest(
+                reference_id=os.getenv('FISH_AUDIO_MODEL'),
+                text=text
+            )):
+                f.write(chunk)
 
         return voice_path
 
@@ -45,10 +47,20 @@ class Voicer:
 
 
 if __name__ == '__main__':
-    synthesizer = SpeechSynthesizer(model="cosyvoice-v1", voice="longshuo")
-    audio = synthesizer.call("可惜！银杏队的10号\"沈子\"的射门打到了对方球员的腿上，未能形成威胁。")
-    with open('test.mp3', 'wb') as f:
-        f.write(audio)
+
+    session = Session(os.getenv('FISH_AUDIO_API_KEY'))
+    
+    # Option 1: Using a reference_id
+    with open("test.mp3", "wb") as f:
+        for chunk in session.tts(TTSRequest(
+            reference_id=os.getenv('FISH_AUDIO_MODEL'),
+            text="目前场上状况依然紧张，银杏队以2:0领先。海棠队需要更有针对性的进攻策略，而银杏队则展现出强大的防守意图。期待双方更多精彩的对抗和机遇！"
+        )):
+            f.write(chunk)
+    #synthesizer = SpeechSynthesizer(model="cosyvoice-v1", voice="longshuo")
+    #audio = synthesizer.call("可惜！银杏队的10号\"沈子聿\"的射门打到了对方球员的腿上，未能形成威胁。")
+    #with open('test.mp3', 'wb') as f:
+    #    f.write(audio)
 
     import vlc
     instance = vlc.Instance()
