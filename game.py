@@ -13,6 +13,7 @@ class Game:
         self.start = 0
         self.end = None
         self.description = obj.get('description', '')
+        self.comment_requirement = obj.get('comment_requirement')
         self.teams = [Team(obj['name'], obj['color'], obj.get('code'), obj.get('score', 0)) for obj in obj['teams']]
         self.main_video = obj.get('main_video', f'{game_id}.mp4')
         self.logo_img = obj.get('logo_img', find_logo_img())
@@ -30,12 +31,12 @@ class Game:
             scoreboard_props = yaml.safe_load(f)
 
         self.scoreboard = Scoreboard.from_dict(
-            {'title': self.name, 'team0': self.teams[0].code, 'team1': self.teams[1].code, 'quarter': f"第{str(self.quarter)}节"}, 
+            {'title': self.name, 'team0': self.teams[0].name, 'team1': self.teams[1].name, 'quarter': f"第{str(self.quarter)}节"}, 
             scoreboard_props)
 
-        self.score_updates.append(ScoreUpdate(self.start, self.teams[0].score, self.teams[1].score))
-
         self.load_start_and_end()
+
+        self.score_updates.append(ScoreUpdate(self.start, self.teams[0].score, self.teams[1].score))
 
     def load_start_and_end(self):
         # find the first event with type 'start'

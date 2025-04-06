@@ -1,3 +1,4 @@
+import logging
 from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, ImageClip, concatenate_videoclips, TextClip
 from moviepy.video.fx import MultiplySpeed, Resize, CrossFadeIn, CrossFadeOut
 import numpy as np
@@ -9,7 +10,7 @@ from event import Tag
 PREVIEW_BUFFER = 2
 DELAY_BEFORE_REPLAY = 6
 REPLAY_BUFFER = 2
-HIGHLIGHT_BUFFER = 3
+HIGHLIGHT_EXTEND = 3
 INTERRUPT_BUFFER = 0.5
 LOGO_STAY = 0.5
 LOGO_FLY = 0.8
@@ -33,7 +34,7 @@ class Editor:
     # 预览比赛视频中配音解说的部分
     def preview(self):
         self.add_comment_voices()
-        print(f"comment audio duration: {self.comment_audio.duration}")
+        logging.info(f"comment audio duration: {self.comment_audio.duration}")
 
         clips = []
         for index, event in enumerate(self.game.events):
@@ -51,7 +52,7 @@ class Editor:
     # 剪辑比赛视频
     def edit(self):
         if os.path.exists(f'game.{self.game.game_id}.mp4'):
-            print(f"game {self.game.game_id} already exists, skipping")
+            logging.info(f"game {self.game.game_id} already exists, skipping")
             return
 
         self.create_replays()
@@ -63,12 +64,12 @@ class Editor:
     def create_replays(self):
         # pick replay events
         replay_events = self.calculate_replay_times()
-        print(f"found {len(replay_events)} replay events")
+        logging.info(f"found {len(replay_events)} replay events")
         logo_video_duration = self.logo_video.duration
 
         last_main_time = 0
         for event in replay_events:
-            print(f"Replay event {event.type.name}: {format_time(event.time)}")
+            logging.info(f"Replay event {event.type.name}: {format_time(event.time)}")
             main_clip_before = self.main_video.subclipped(last_main_time, event.replay_time + logo_video_duration / 2).with_start(last_main_time)
             logo_clip_before = self.logo_video.with_start(main_clip_before.end - logo_video_duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
             replay_clip = self.main_video.subclipped(event.time - REPLAY_BUFFER, event.time + REPLAY_BUFFER).without_audio().with_effects([MultiplySpeed(0.5)]).with_start(main_clip_before.end)
@@ -104,10 +105,10 @@ class Editor:
         replay_duration = REPLAY_BUFFER * 2 * 2
 
         for deadball in deadballs:
-            print(f"calculate replay in deadball [{format_time(deadball.start)}-{format_time(deadball.end)}]")
+            logging.info(f"calculate replay in deadball [{format_time(deadball.start)}-{format_time(deadball.end)}]")
             # 如果deadball时间太短，跳过
             if deadball.duration < replay_duration:
-                print("duration is too short, skipping")
+                logging.info("duration is too short, skipping")
                 continue
             
             # 找到deadball之前最近的事件
@@ -123,7 +124,7 @@ class Editor:
                 # 计算居中播放的时间
                 center_time = deadball.start + (deadball.duration - replay_duration) / 2
                 nearest_event.replay_time = center_time
-                print(f"replay event: {nearest_event.type.name} {format_time(nearest_event.time)} at {format_time(center_time)}")
+                logging.info(f"replay event: {nearest_event.type.name} {format_time(nearest_event.time)} at {format_time(center_time)}")
         
         return [e for e in replay_events if e.replay_time]
 
@@ -134,7 +135,6 @@ class Editor:
             self.render_scoreboard(self.game.start, self.game.end, 0, 0)
             return
 
-        print('score_updates:', self.game.score_updates)
         # 从后往前处理每个更新
         updates = self.game.score_updates
         next_time = self.game.end
@@ -156,7 +156,7 @@ class Editor:
 
     # 渲染记分牌片段
     def render_scoreboard(self, start_time, end_time, score0, score1):
-        print(f"render scoreboard {start_time} to {end_time} with {score0}:{score1}")
+        logging.info(f"render scoreboard {start_time} to {end_time} with {score0}:{score1}")
         self.scoreboard_clips.append(
             self.game.scoreboard.render(self.game.game_time(start_time), end_time - start_time, score0, score1)
                 .with_start(start_time)
@@ -169,23 +169,26 @@ class Editor:
         audio_clips = []
         last_comment = None
         for comment in self.game.comments:
+            if not comment.text:
+                continue
             voice_path = self.voicer.get_voice(comment.text)
-            print(f"voice path: {voice_path}")
+            logging.info(f"voice path: {voice_path}")
             voice_clip = AudioFileClip(voice_path).with_volume_scaled(2)
             last_comment_end = last_comment.time + audio_clips[-1].duration if last_comment else 0
             if comment.time < last_comment_end:
-                print("overlapping comments, skipping lower level")
+                logging.info("overlapping comments, skipping lower level")
                 if comment.event_level < last_comment.event_level:
-                    print("skipping comment", comment.text)
+                    logging.info(f"skipping comment {comment.text}")
                     continue
                 if last_comment.time < comment.time - INTERRUPT_BUFFER:
-                    print("interrupt last comment", last_comment.text)
+                    logging.info(f"interrupt last comment {last_comment.text}")
                     audio_clips[-1] = audio_clips[-1].subclipped(0, comment.time - last_comment.time - INTERRUPT_BUFFER)
                 else:
-                    print("skipping last comment", last_comment.text)
+                    logging.info(f"skipping last comment {last_comment.text}")
                     audio_clips.pop()
                     last_comment = None
-            print(f"Adding voice for comment {comment.text} at {comment.time}")
+
+            logging.info(f"Adding voice for comment {comment.text} at {comment.time}")
             audio_clips.append(voice_clip.with_start(comment.time))
             last_comment = comment
         self.comment_audio = CompositeAudioClip(audio_clips)
@@ -206,7 +209,7 @@ class Editor:
         game_clip = VideoFileClip(game_file)
 
         if end:
-            print(f"Subclipping from {format_time(start)} to {format_time(end)}")
+            logging.info(f"Subclipping from {format_time(start)} to {format_time(end)}")
             return game_clip.subclipped(start, end)
 
         highlights_file = f'highlights.{self.game.game_id}.mp4'
@@ -228,9 +231,9 @@ class Editor:
         for event in self.game.events:
             if Tag.Replay in event.tags:
                 logo_clips.append(self.create_logo_clip(last_highlight_end))
-                highlight_clip = game_clip.subclipped(event.time - HIGHLIGHT_BUFFER, event.time + HIGHLIGHT_BUFFER).with_start(last_highlight_end)
-                clips.append(highlight_clip.copy())
-                replay_clip = highlight_clip.with_effects([MultiplySpeed(0.5)]).without_audio().with_start(highlight_clip.end)
+                highlight_clip = game_clip.subclipped(event.time - REPLAY_BUFFER, event.time + REPLAY_BUFFER + HIGHLIGHT_EXTEND).with_start(last_highlight_end)
+                clips.append(highlight_clip)
+                replay_clip = game_clip.subclipped(event.time - REPLAY_BUFFER, event.time + REPLAY_BUFFER).with_effects([MultiplySpeed(0.5)]).without_audio().with_start(highlight_clip.end)
                 clips.append(replay_clip)
                 last_highlight_end = replay_clip.end
 

@@ -1,6 +1,7 @@
 import base64
 from io import BytesIO
 import openai
+import os
 
 #ai_client = openai.OpenAI(
 #    api_key=os.getenv("DASHSCOPE_API_KEY"),

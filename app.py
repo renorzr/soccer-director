@@ -1,23 +1,30 @@
+from comments_edit import edit
 from editor import Editor
 from event_analyzer import EventAnalyzer
 from game import Game
 import yaml
 import os
 import time
+import logging
 from utils import format_time
 import argparse
 import mark
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 def main():
     parser = argparse.ArgumentParser(
-        description='足球导演 - 足球比赛视频分析与剪辑',
+        description='足球导播 - 足球比赛视频分析与剪辑',
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "action",
         type=str,
-        choices=["preview", "make", "mark", "clean", "analyze"],
+        choices=["mark", "preview", "analyze", "edit", "make", "clean"],
         help="""要执行的操作：
 
 mark: 在原始比赛视频中标记事件
@@ -25,6 +32,7 @@ analyze: 根据比赛事件生成分析数据和解说文字（不创建视频�
 preview: 预览比赛视频中配音解说的部分
 make: 创建并保存比赛视频和集锦
 clean: 删除该比赛生成的中间文件
+edit: 编辑解说文字
 """,
         metavar="action"
     )
@@ -74,6 +82,9 @@ clean: 删除该比赛生成的中间文件
     elif args.action == "analyze":
         # no more action needed
         return 0
+    elif args.action == "edit":
+        edit(f"game.{game.game_id}.pkl")
+        return 0
     else:
         print("unknown action:", args.action)
         return 1
@@ -84,4 +95,4 @@ clean: 删除该比赛生成的中间文件
 
 
 if __name__ == '__main__':
-    main()
+    exit(main())

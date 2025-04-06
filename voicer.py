@@ -17,6 +17,9 @@ class Voicer:
             self.make_text_voice(comment.text)
 
     def make_text_voice(self, text):
+        if not text:
+            return
+
         # skip if voice already exists
         voice_path = self.get_voice(text)
         print(f"make voice for {text} at {voice_path}")
@@ -28,7 +31,6 @@ class Voicer:
             os.mkdir(VOICE_DIR)
 
         # generate and save voice
-        time.sleep(1)
         print(f"generating voice for comment {text} with path {voice_path}")
         with open(voice_path, 'wb') as f:
             for chunk in session.tts(TTSRequest(
@@ -36,6 +38,7 @@ class Voicer:
                 text=text
             )):
                 f.write(chunk)
+        time.sleep(1)
 
         return voice_path
 
@@ -43,7 +46,7 @@ class Voicer:
         return os.path.join(VOICE_DIR, self.voice_name(text))
 
     def voice_name(self, text):
-        return f"{hashlib.md5(text.encode('utf-8')).hexdigest()}.mp3"
+        return f"{hashlib.md5(text.encode('utf-8')).hexdigest()}.mp3" if text else None
 
 
 if __name__ == '__main__':
@@ -54,7 +57,7 @@ if __name__ == '__main__':
     with open("test.mp3", "wb") as f:
         for chunk in session.tts(TTSRequest(
             reference_id=os.getenv('FISH_AUDIO_MODEL'),
-            text="目前场上状况依然紧张，银杏队以2:0领先。海棠队需要更有针对性的进攻策略，而银杏队则展现出强大的防守意图。期待双方更多精彩的对抗和机遇！"
+            text="可惜！银杏队的0号\"任初见\"的射门打到了对方球员的腿上，未能形成威胁"
         )):
             f.write(chunk)
     #synthesizer = SpeechSynthesizer(model="cosyvoice-v1", voice="longshuo")
