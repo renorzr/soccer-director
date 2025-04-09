@@ -17,7 +17,7 @@ class Tag(Enum):
 class EventType(Enum):
     Start = 6, [Tag.Liveball], "比赛开始", "简短宣布比赛开始"
     End = 7, [Tag.Deadball], "比赛结束", "宣布全场比赛结束（如：终场哨响；全场比赛结束；裁判员吹响了终场哨；比赛结束；等等。），然后补充比赛结果，用两三句励志且富有诗意的表达点评比赛，最后感谢观众收看。"
-    Goal = 9, [Tag.Replay, Tag.Deadball], "进球", "简短，以\"球进啦！\"、\"进了！\"、\"好球！\"等开头"
+    Goal = 9, [Tag.Replay, Tag.Deadball], "进球", "简短，以\"球进啦！\"、\"进啦！\"、\"好球！\"等开头"
     Miss = 8, [Tag.Replay], "射门未进", "简短，以\"哎呀没进！\"、\"打偏了！\"、\"可惜！\"等开头"
     Foul = 8, [Tag.Replay, Tag.Deadball], "犯规", "简短，以\"这个球是犯规\"、\"裁判吹哨了！\"、\"犯规！\"等开头"
     Out = 5, [Tag.Deadball], "出界", "简短"

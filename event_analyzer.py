@@ -62,7 +62,7 @@ class EventAnalyzer:
                 comments.append(Comment(intro_time, chat_ai.chat("Intro"), 'event', event.id, event.type.level))
             elif event.type == EventType.End:
                 if self.game.quarter < 4:
-                    comments.append(Comment(time, chat_ai.chat("EndQuater"),'event', event.id, event.type.level))
+                    comments.append(Comment(event.time, chat_ai.chat("EndQuater"),'event', event.id, event.type.level))
                     continue
             elif event.type == EventType.Goal:
                 comments.append(Comment(event.time, shoot_text(), 'event', event.id, event.type.level))

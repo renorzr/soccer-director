@@ -23,7 +23,7 @@ class Voicer:
         # skip if voice already exists
         voice_path = self.get_voice(text)
         print(f"make voice for {text} at {voice_path}")
-        if os.path.exists(voice_path):
+        if os.path.exists(voice_path) and os.path.getsize(voice_path) > 0:
             print(f"voice already exists for {text} at {voice_path}")
             return voice_path
 

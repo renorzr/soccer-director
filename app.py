@@ -9,6 +9,7 @@ import logging
 from utils import format_time
 import argparse
 import mark
+from clips import create_goal_clips
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,7 +25,7 @@ def main():
     parser.add_argument(
         "action",
         type=str,
-        choices=["mark", "preview", "analyze", "edit", "make", "clean"],
+        choices=["mark", "preview", "analyze", "edit", "make", "clean", "goals"],
         help="""要执行的操作：
 
 mark: 在原始比赛视频中标记事件
@@ -59,7 +60,6 @@ edit: 编辑解说文字
         mark.mark(game.main_video, f'events.{game_id}.csv')
         return 1
 
-    editor = Editor(game)
 
     analyzer = EventAnalyzer(game)
     analyzer.analyze()
@@ -67,8 +67,10 @@ edit: 编辑解说文字
     start = time.time()
 
     if args.action == "preview":
+        editor = Editor(game)
         editor.preview()
     elif args.action == "make":
+        editor = Editor(game)
         editor.edit()
         editor.save()
     elif args.action == "clean":
@@ -85,6 +87,8 @@ edit: 编辑解说文字
     elif args.action == "edit":
         edit(f"game.{game.game_id}.pkl")
         return 0
+    elif args.action == "goals":
+        create_goal_clips(game)
     else:
         print("unknown action:", args.action)
         return 1
