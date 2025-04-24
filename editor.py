@@ -21,7 +21,6 @@ class Editor:
     def __init__(self, game):
         self.game = game
         self.voicer = Voicer(game)
-        self.clips = []
         self.logo_clips = []
         self.replay_clips = []
         self.scoreboard_clips = []
@@ -70,21 +69,13 @@ class Editor:
         last_main_time = 0
         for event in replay_events:
             logging.info(f"Replay event {event.type.name}: {format_time(event.time)}")
-            main_clip_before = self.main_video.subclipped(last_main_time, event.replay_time + logo_video_duration / 2).with_start(last_main_time)
-            logo_clip_before = self.logo_video.with_start(main_clip_before.end - logo_video_duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
-            replay_clip = self.main_video.subclipped(event.time - REPLAY_BUFFER, event.time + REPLAY_BUFFER).without_audio().with_effects([MultiplySpeed(0.5)]).with_start(main_clip_before.end)
+            logo_clip_before = self.logo_video.with_start(event.replay_time - logo_video_duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
+            replay_clip = self.main_video.subclipped(event.time - REPLAY_BUFFER, event.time + REPLAY_BUFFER).without_audio().with_effects([MultiplySpeed(0.5)]).with_start(event.replay_time)
             logo_clip_after = self.logo_video.with_start(replay_clip.end - logo_video_duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
-            last_main_time = last_main_time + main_clip_before.duration + replay_clip.duration
-            replay_clip.audio = self.main_video.audio.subclipped(replay_clip.start, replay_clip.end).with_start(replay_clip.start)
 
-            self.clips.append(main_clip_before)
             self.replay_clips.append(replay_clip)
             self.logo_clips.append(logo_clip_before)
             self.logo_clips.append(logo_clip_after)
-
-        if last_main_time < self.main_video.duration:
-            main_clip_after = self.main_video.subclipped(last_main_time, self.main_video.duration).with_start(last_main_time)
-            self.clips.append(main_clip_after)
 
     # 计算重放片段的时间
     def calculate_replay_times(self):
@@ -202,7 +193,7 @@ class Editor:
     def composite(self, start=0, end=None):
         game_file = f'game.{self.game.game_id}.mp4'
         if not os.path.exists(game_file):
-            game_clip = CompositeVideoClip(self.clips + self.replay_clips + self.scoreboard_clips + self.logo_clips)
+            game_clip = CompositeVideoClip([self.main_video] + self.replay_clips + self.scoreboard_clips + self.logo_clips)
             if self.comment_audio:
                 game_clip.audio=CompositeAudioClip([game_clip.audio, self.comment_audio])
                 game_clip.write_videofile(game_file, threads=32, fps=24, preset='ultrafast')

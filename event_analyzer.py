@@ -32,14 +32,17 @@ class EventAnalyzer:
         game_info = f"比赛名称：{self.game.name}\n"
         game_info += f"{self.game.teams[0].color}队服: {self.game.teams[0].name}队\n"
         game_info += f"{self.game.teams[1].color}队服: {self.game.teams[1].name}队\n"
-        game_info += f"目前是第{self.game.quarter}节，比分是{self.game.teams[0].score}:{self.game.teams[1].score}\n" if self.game.quarter else ""
+        game_info += f"目前是第{self.game.quarter}节，比分是{self.game.teams[0].score}:{self.game.teams[1].score}\n" if self.game.quarter and self.game.quarter > 1 else ""
         game_info += f"其它信息：{self.game.description}\n" if self.game.description else ""
         game_info += f"其它要求：{self.game.comment_requirement}\n" if self.game.comment_requirement else ""
 
         chat_ai = ChatAI()
 
-        prompt = f"你是足球解说员\"{self.game.narrator}\"，我会发送给你比赛事件描述和解说要求，每次请生成一行解说词，提及球员名字时请用使用引号，可以省略球队和号码，如果不知道球员名字可以说xx队的x号。\n"
-        prompt += "每次事件将以事件代码开头，然后是事件主体球队、队员和描述(N/A 表示未知或不可用)。事件代码的含义以及解说要求如下：\n"
+        prompt = f"你是足球解说员\"{self.game.narrator}\"，我会发送给你比赛事件描述，每次请生成一行解说词。\n"
+        prompt += "文字要求：\n"
+        prompt += "1.提及球员名字时请用使用引号，可以省略球队和号码，如果不知道球员名字可以说xx队的x号。\n"
+        prompt += "2.生成的文字会发送给TTS生成语音，应使用明确可读的文字表达，如：“银杏队2:1樱花队”应表述为“银杏队二比一领先樱花队”。\n\n"
+        prompt += "每次发送给你的事件将以事件代码开头，然后是事件主体球队、队员和描述(N/A 表示未知或不可用)。事件代码的含义以及解说要求如下：\n"
         prompt += "Idle: 没有特别的事 要求：根据比赛信息和场上态势简短点评"
         prompt += "EndQuater: 一节比赛结束 要求：宣布第x节比赛结束，简短点评，提醒观众下一节马上开始。"
         prompt += "Intro: 开场前的介绍 要求：开场解说词，如果不是第一节，请补充上一节比分是x:x"
