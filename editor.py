@@ -27,6 +27,7 @@ class Editor:
         self.main_video = VideoFileClip(self.game.main_video)
         self.logo_img = ImageClip(self.game.logo_img).with_effects([Resize(self.main_video.size)])
         self.logo_video = self.load_logo_video()
+        self.brand_video = self.load_brand_video()
         self.bgm = AudioFileClip(self.game.bgm) if self.game.bgm and os.path.exists(self.game.bgm) else None
         self.comment_audio = None
 
@@ -209,9 +210,7 @@ class Editor:
             hightlights_clip.write_videofile(highlights_file, threads=32, fps=24, preset='ultrafast')
         hightlights_clip = VideoFileClip(highlights_file)
 
-        logo_clip = self.create_logo_clip(0)
-
-        return concatenate_videoclips([logo_clip, game_clip, hightlights_clip])
+        return concatenate_videoclips([self.brand_video, game_clip, hightlights_clip])
 
     # 创建精彩瞬间片段
     def create_hightlights_clip(self, game_clip, type=None, comment=None):
@@ -285,5 +284,11 @@ class Editor:
             return self.create_logo_video()
         else:
             return VideoFileClip(self.game.logo_video).with_effects([Resize(self.main_video.size)])
+
+    def load_brand_video(self):
+        if not os.path.exists(self.game.brand_video):
+            return self.logo_video
+        else:
+            return VideoFileClip(self.game.brand_video).with_effects([Resize(self.main_video.size)])
 
 

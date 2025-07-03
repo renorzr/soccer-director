@@ -1,4 +1,4 @@
-# 谷粒足球导播 (Soccer Director)
+# 谷粒足球导播 (Grain Soccer Director)
 
 一个用于足球比赛视频分析与剪辑的工具，可以自动生成比赛集锦、添加解说配音，并提供丰富的视频编辑功能。
 
@@ -17,7 +17,7 @@
 1. 确保已安装 Python 3.8 或更高版本
 2. 克隆项目到本地：
    ```bash
-   git clone https://github.com/yourusername/soccer-director.git
+   git clone https://github.com/renorzr/soccer-director.git
    cd soccer-director
    ```
 3. 创建并激活虚拟环境（推荐）：
@@ -41,7 +41,7 @@
    # DashScope API密钥（用于语音合成）
    DASHSCOPE_API_KEY=your_dashscope_api_key
 
-   # 鱼声API密钥（用于语音合成）
+   # fish.audio API密钥（用于语音合成）
    FISH_AUDIO_API_KEY=your_fish_audio_api_key
    FISH_AUDIO_MODEL=your_fish_audio_model_id
    ```

@@ -48,28 +48,3 @@ class Voicer:
     def voice_name(self, text):
         return f"{hashlib.md5(text.encode('utf-8')).hexdigest()}.mp3" if text else None
 
-
-if __name__ == '__main__':
-
-    session = Session(os.getenv('FISH_AUDIO_API_KEY'))
-    
-    # Option 1: Using a reference_id
-    with open("test.mp3", "wb") as f:
-        for chunk in session.tts(TTSRequest(
-            reference_id=os.getenv('FISH_AUDIO_MODEL'),
-            text="可惜！银杏队的0号\"任初见\"的射门打到了对方球员的腿上，未能形成威胁"
-        )):
-            f.write(chunk)
-    #synthesizer = SpeechSynthesizer(model="cosyvoice-v1", voice="longshuo")
-    #audio = synthesizer.call("可惜！银杏队的10号\"沈子聿\"的射门打到了对方球员的腿上，未能形成威胁。")
-    #with open('test.mp3', 'wb') as f:
-    #    f.write(audio)
-
-    import vlc
-    instance = vlc.Instance()
-    player = instance.media_player_new()
-    media = instance.media_new('test.mp3')
-    player.set_media(media)
-    player.play()
-    input()
-    player.stop()

@@ -18,6 +18,7 @@ class Game:
         self.main_video = obj.get('main_video', f'{game_id}.mp4')
         self.logo_img = obj.get('logo_img', find_logo_img())
         self.logo_video = obj.get('logo_video', 'logo.mp4')
+        self.brand_video = obj.get('brand_video', 'brand.mp4')
         self.bgm = obj.get('bgm', 'bgm.mp3')
         self.prev_time = parse_time(obj.get('prev_time', 0))
         self.quarter = obj.get('quarter')
