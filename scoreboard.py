@@ -1,3 +1,5 @@
+import cv2
+import numpy as np
 import os
 from moviepy import ImageClip, TextClip, CompositeVideoClip
 from utils import format_time
@@ -22,6 +24,7 @@ class Scoreboard:
         self.img = img
         self.texts = texts
         self.textprops = textprops
+        self.scoreboard_img = cv2.imread(img, cv2.IMREAD_UNCHANGED)
 
 
     @classmethod
@@ -58,6 +61,64 @@ class Scoreboard:
 
         return CompositeVideoClip(clips)
 
+    def render_frame(self, frame, time, score0, score1):
+        # If scoreboard image has alpha, blend it onto the frame
+        sh, sw = self.scoreboard_img.shape[:2]
+        fh, fw = frame.shape[:2]
+
+        # Place scoreboard at the top center
+        x_offset = (fw - sw) // 2
+        y_offset = 0
+
+        # Prepare overlay
+        overlay = frame
+        # If scoreboard has alpha channel, blend it
+        if self.scoreboard_img.shape[2] == 4:
+            alpha_s = self.scoreboard_img[:, :, 3] / 255.0
+            alpha_l = 1.0 - alpha_s
+            for c in range(0, 3):
+                overlay[y_offset:y_offset+sh, x_offset:x_offset+sw, c] = (
+                    alpha_s * self.scoreboard_img[:, :, c] +
+                    alpha_l * overlay[y_offset:y_offset+sh, x_offset:x_offset+sw, c]
+                )
+        else:
+            overlay[y_offset:y_offset+sh, x_offset:x_offset+sw] = self.scoreboard_img
+
+        # Draw texts (score0, score1, and others)
+        def draw_text(img, text, textprop):
+            if textprop is None:
+                return
+            font_face = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.7
+            thickness = 2
+            color = (255, 255, 255)  # default white
+            if textprop.color:
+                # Try to parse color string (e.g., "#RRGGBB" or "red")
+                try:
+                    if textprop.color.startswith("#"):
+                        color = tuple(int(textprop.color[i:i+2], 16) for i in (1, 3, 5))[::-1]
+                except Exception:
+                    pass
+            x, y = int(textprop.left + x_offset), int(textprop.top + y_offset + textprop.height)
+            cv2.putText(img, str(text), (x, y), font_face, font_scale, color, thickness, cv2.LINE_AA)
+
+        # Draw scores
+        draw_text(overlay, score0, self.textprops.get('score0'))
+        draw_text(overlay, score1, self.textprops.get('score1'))
+
+        # Draw other texts
+        for key, text in self.texts.items():
+            if key in ['score0', 'score1']:
+                continue
+            textprop = self.textprops.get(key)
+            draw_text(overlay, text, textprop)
+
+        # Draw time if needed
+        time_textprop = self.textprops.get('time')
+        if time_textprop is not None:
+            draw_text(overlay, format_time(time, 0), time_textprop)
+
+        return overlay
 
 
 def render_text(text, textprop, time, duration):

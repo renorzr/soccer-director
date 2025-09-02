@@ -72,7 +72,6 @@ edit: 编辑解说文字
     elif args.action == "make":
         editor = Editor(game)
         editor.edit()
-        editor.save()
     elif args.action == "clean":
         confirm = input("确定要删除该比赛生成的文件吗？(y/n): ").lower()
         if confirm == "y":

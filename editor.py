@@ -1,4 +1,5 @@
 import logging
+import subprocess
 from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, ImageClip, concatenate_videoclips, TextClip
 from moviepy.video.fx import MultiplySpeed, Resize, CrossFadeIn, CrossFadeOut
 import numpy as np
@@ -6,6 +7,7 @@ import os
 from voicer import Voicer
 from utils import format_time
 from event import Tag
+import cv2
 
 PREVIEW_BUFFER = 2
 DELAY_BEFORE_REPLAY = 6
@@ -14,6 +16,8 @@ HIGHLIGHT_EXTEND = 3
 INTERRUPT_BUFFER = 0.5
 LOGO_STAY = 0.5
 LOGO_FLY = 0.8
+TEMP_VIDEO_NAME = 'temp.mp4'
+TEMP_AUDIO_NAME = 'temp.aac'
 
 # 剪辑器
 class Editor:
@@ -24,12 +28,25 @@ class Editor:
         self.logo_clips = []
         self.replay_clips = []
         self.scoreboard_clips = []
-        self.main_video = VideoFileClip(self.game.main_video)
-        self.logo_img = ImageClip(self.game.logo_img).with_effects([Resize(self.main_video.size)])
-        self.logo_video = self.load_logo_video()
-        self.brand_video = self.load_brand_video()
-        self.bgm = AudioFileClip(self.game.bgm) if self.game.bgm and os.path.exists(self.game.bgm) else None
         self.comment_audio = None
+        self.current_score = None
+        self.logo_times = None
+        self.load_logo_video()
+    
+    def load_logo_video(self):
+        logo_video_cap = cv2.VideoCapture(self.game.logo_video)
+        fps = logo_video_cap.get(cv2.CAP_PROP_FPS)
+        frames = []
+        while True:
+            ret, frame = logo_video_cap.read()
+            if not ret:
+                break
+            frames.append(frame)
+
+        duration = len(frames) / fps
+        logo_video_cap.release()
+        self.logo_video = {"fps": fps, "duration": duration, "frames": frames}
+        print(f"loading logo video {self.game.logo_video} with {self.logo_video['fps']} fps and {self.logo_video['duration']} duration")
 
     # 预览比赛视频中配音解说的部分
     def preview(self):
@@ -48,17 +65,146 @@ class Editor:
         # 连接有解说的片段并保存为预览视频
         concatenate_videoclips(clips).write_videofile('preview.mp4', threads=32, fps=16, preset='ultrafast')
 
-
-    # 剪辑比赛视频
     def edit(self):
-        if os.path.exists(f'game.{self.game.game_id}.mp4'):
-            logging.info(f"game {self.game.game_id} already exists, skipping")
+        if not os.path.exists(TEMP_VIDEO_NAME):
+            self.create_output_video()
+        if not os.path.exists(TEMP_AUDIO_NAME):
+            self.create_output_audio()
+        self.add_audio()
+
+    def create_output_video(self):
+        cap = cv2.VideoCapture(self.game.main_video)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        out = cv2.VideoWriter(TEMP_VIDEO_NAME, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+
+        replay_events = self.calculate_replay_times()
+        print(f"found {len(replay_events)} replay events")
+        self.calculate_logo_times(replay_events)
+        replay_frames = []
+        replay_time = None
+        processing_replay_event = None
+        frame_count = 0
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            time = frame_count / fps
+            if frame_count % 10 == 0:
+                print(f"frame {frame_count} / {cap.get(cv2.CAP_PROP_FRAME_COUNT)}", end="\r")
+
+            if processing_replay_event is None:
+                first_replay_event_time = len(replay_events) > 0 and replay_events[0].time or -100
+                if time > first_replay_event_time - REPLAY_BUFFER and time < first_replay_event_time + REPLAY_BUFFER:
+                    processing_replay_event = replay_events.pop(0)
+                    print(f"processing replay event {processing_replay_event.type.name} {format_time(processing_replay_event.time)}")
+                    replay_frame = frame.copy()
+                    replay_frames.append(replay_frame)
+                    replay_frames.append(replay_frame)
+            else:
+                if time > processing_replay_event.time - REPLAY_BUFFER and time < processing_replay_event.time + REPLAY_BUFFER:
+                    replay_frame = frame.copy()
+                    replay_frames.append(replay_frame)
+                    replay_frames.append(replay_frame)
+                else:
+                    print(f"processed replay event {processing_replay_event.type.name} {format_time(processing_replay_event.time)}")
+                    replay_time = processing_replay_event.replay_time
+                    processing_replay_event = None
+
+            if replay_time is not None and time > replay_time:
+                if len(replay_frames) > 0:
+                    frame = replay_frames.pop(0)
+                else:
+                    replay_time = None
+
+            frame_count += 1
+
+            self.draw_scoreboard(time, frame)
+            self.draw_logo(time, frame)
+            out.write(frame)
+
+        out.release()  # release the cv2's VideoWriter
+        cap.release()
+
+    def create_output_audio(self):
+        self.voicer.make_voice()
+        audio_clips = [VideoFileClip(self.game.main_video).audio]
+        last_comment = None
+        for comment in self.game.comments:
+            if not comment.text:
+                continue
+            voice_path = self.voicer.get_voice(comment.text)["path"]
+            logging.info(f"voice path: {voice_path}")
+            voice_clip = AudioFileClip(voice_path).with_volume_scaled(2)
+            last_comment_end = last_comment.time + audio_clips[-1].duration if last_comment else 0
+            if comment.time < last_comment_end:
+                logging.info("overlapping comments, skipping lower level")
+                if comment.event_level < last_comment.event_level:
+                    logging.info(f"skipping comment {comment.text}")
+                    continue
+                if last_comment.time < comment.time - INTERRUPT_BUFFER:
+                    logging.info(f"interrupt last comment {last_comment.text}")
+                    audio_clips[-1] = audio_clips[-1].subclipped(0, comment.time - last_comment.time - INTERRUPT_BUFFER)
+                else:
+                    logging.info(f"skipping last comment {last_comment.text}")
+                    audio_clips.pop()
+                    last_comment = None
+
+            logging.info(f"Adding voice for comment {comment.text} at {comment.time}")
+            audio_clips.append(voice_clip.with_start(comment.time))
+            last_comment = comment
+        CompositeAudioClip(audio_clips).write_audiofile(TEMP_AUDIO_NAME, codec="aac")
+
+    def add_audio(self):
+        command = f"ffmpeg -i {TEMP_VIDEO_NAME} -i {TEMP_AUDIO_NAME} -c:v copy -c:a aac -strict experimental output.mp4 -y"
+        subprocess.run(command, shell=True)
+        os.remove(TEMP_VIDEO_NAME)
+        os.remove(TEMP_AUDIO_NAME)
+
+    def draw_scoreboard(self, time, frame):
+        if time < self.game.start or time > self.game.end:
             return
 
-        self.create_replays()
-        self.create_scoreboards()
-        self.add_comment_voices()
+        if len(self.game.score_updates) > 0 and time > self.game.score_updates[0].time:
+            self.current_score = self.game.score_updates.pop(0)
 
+        if self.current_score is not None:
+            self.game.scoreboard.render_frame(frame, time - self.game.start, self.current_score.score0, self.current_score.score1)
+
+    def calculate_logo_times(self, replay_events):
+        self.logo_times = []
+        for replay_event in replay_events:
+            self.logo_times.append(replay_event.replay_time - self.logo_video["duration"] / 2)
+            self.logo_times.append(replay_event.replay_time + REPLAY_BUFFER * 4 - self.logo_video["duration"] / 2)
+
+    def draw_logo(self, time, frame):
+        first_logo_time = len(self.logo_times) > 0 and self.logo_times[0] or None
+
+        if first_logo_time is None:
+            return
+
+        if time > first_logo_time + self.logo_video["duration"]:
+            print(f"logo time {first_logo_time} + {self.logo_video['duration']} is past, popping logo time")
+            if len(self.logo_times) > 0:
+                self.logo_times.pop(0)
+            return;
+
+        if time >= first_logo_time:
+            logo_time = time - first_logo_time
+            logo_frame_index = int(logo_time * self.logo_video["fps"])
+            logo_frame = self.logo_video["frames"][logo_frame_index]
+            if logo_time < LOGO_FLY / 2:
+                alpha = 1 - logo_time / (LOGO_FLY / 2)
+            elif logo_time > self.logo_video["duration"] - LOGO_FLY / 2:
+                alpha = 1 - (self.logo_video["duration"] - logo_time) / (LOGO_FLY / 2)
+            else:
+                alpha = 0
+
+            cv2.addWeighted(frame, alpha, logo_frame, 1 - alpha, 0, frame)
+            cv2.putText(frame, f"logo time: {logo_time:.2f} frame: {logo_frame_index}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
 
     # 创建重放片段
     def create_replays(self):
@@ -120,98 +266,6 @@ class Editor:
         
         return [e for e in replay_events if e.replay_time]
 
-    # 创建记分牌片段
-    def create_scoreboards(self):
-        if not self.game.score_updates:
-            # 如果没有任何比分更新，创建一个0:0的记分牌从开始到结束
-            self.render_scoreboard(self.game.start, self.game.end, 0, 0)
-            return
-
-        # 从后往前处理每个更新
-        updates = self.game.score_updates
-        next_time = self.game.end
-        for i in range(len(updates) - 1, -1, -1):
-            current_update = updates[i]
-            
-            self.render_scoreboard(
-                current_update.time,
-                next_time,
-                current_update.score0,
-                current_update.score1
-            )
-
-            next_time = current_update.time
-        
-        # 处理比赛开始到第一次更新之间的时间段
-        if updates[0].time > self.game.start:
-            self.render_scoreboard(self.game.start, updates[0].time, 0, 0)
-
-    # 渲染记分牌片段
-    def render_scoreboard(self, start_time, end_time, score0, score1):
-        logging.info(f"render scoreboard {start_time} to {end_time} with {score0}:{score1}")
-        self.scoreboard_clips.append(
-            self.game.scoreboard.render(self.game.game_time(start_time), end_time - start_time, score0, score1)
-                .with_start(start_time)
-                .with_position(("center", "bottom"))
-        )
-        
-    # 添加配音解说
-    def add_comment_voices(self):
-        self.voicer.make_voice()
-        audio_clips = []
-        last_comment = None
-        for comment in self.game.comments:
-            if not comment.text:
-                continue
-            voice_path = self.voicer.get_voice(comment.text)
-            logging.info(f"voice path: {voice_path}")
-            voice_clip = AudioFileClip(voice_path).with_volume_scaled(2)
-            last_comment_end = last_comment.time + audio_clips[-1].duration if last_comment else 0
-            if comment.time < last_comment_end:
-                logging.info("overlapping comments, skipping lower level")
-                if comment.event_level < last_comment.event_level:
-                    logging.info(f"skipping comment {comment.text}")
-                    continue
-                if last_comment.time < comment.time - INTERRUPT_BUFFER:
-                    logging.info(f"interrupt last comment {last_comment.text}")
-                    audio_clips[-1] = audio_clips[-1].subclipped(0, comment.time - last_comment.time - INTERRUPT_BUFFER)
-                else:
-                    logging.info(f"skipping last comment {last_comment.text}")
-                    audio_clips.pop()
-                    last_comment = None
-
-            logging.info(f"Adding voice for comment {comment.text} at {comment.time}")
-            audio_clips.append(voice_clip.with_start(comment.time))
-            last_comment = comment
-        self.comment_audio = CompositeAudioClip(audio_clips)
-
-    # 保存比赛视频
-    def save(self, start=0, end=None):
-        final_clip = self.composite(start, end)
-        final_clip.write_videofile(f'output.{self.game.game_id}.mp4', threads=32, fps=24, preset='ultrafast')
-
-    # 合成比赛视频
-    def composite(self, start=0, end=None):
-        game_file = f'game.{self.game.game_id}.mp4'
-        if not os.path.exists(game_file):
-            game_clip = CompositeVideoClip([self.main_video] + self.replay_clips + self.scoreboard_clips + self.logo_clips)
-            if self.comment_audio:
-                game_clip.audio=CompositeAudioClip([game_clip.audio, self.comment_audio])
-                game_clip.write_videofile(game_file, threads=32, fps=24, preset='ultrafast')
-        game_clip = VideoFileClip(game_file)
-
-        if end:
-            logging.info(f"Subclipping from {format_time(start)} to {format_time(end)}")
-            return game_clip.subclipped(start, end)
-
-        highlights_file = f'highlights.{self.game.game_id}.mp4'
-        if not os.path.exists(highlights_file):
-            hightlights_clip = self.create_hightlights_clip(game_clip, comment="下面请观看本场比赛的精彩瞬间")
-            hightlights_clip.write_videofile(highlights_file, threads=32, fps=24, preset='ultrafast')
-        hightlights_clip = VideoFileClip(highlights_file)
-
-        return concatenate_videoclips([self.brand_video, game_clip, hightlights_clip])
-
     # 创建精彩瞬间片段
     def create_hightlights_clip(self, game_clip, type=None, comment=None):
         clips = []
@@ -255,40 +309,3 @@ class Editor:
             highlights_clip.audio = CompositeAudioClip(audio_clips)
 
         return highlights_clip
-
-    # 获取视频帧
-    def get_frame(self, time):
-        return self.main_video.get_frame(time)
-
-    # 获取视频时长
-    def get_duration(self):
-        return self.main_video.duration
-
-    # 创建logo片段
-    def create_logo_clip(self, time):
-        return self.logo_video.with_start(time - self.logo_video.duration / 2).with_position(("center", "center")).with_effects([CrossFadeIn(LOGO_FLY / 2).copy(), CrossFadeOut(LOGO_FLY / 2).copy()])
-
-    # 创建logo视频
-    def create_logo_video(self, stay=LOGO_STAY):
-        clip = self.logo_img
-        puff_in_clip = clip.with_effects([Resize(lambda t: (2 * (LOGO_FLY - t) / LOGO_FLY) + 1)]).with_position(("center", "center")).with_duration(LOGO_FLY)
-        stay_clip = clip.with_duration(stay).with_start(puff_in_clip.end).with_position(("center", "center"))
-        puff_out_clip = clip.with_effects([Resize(lambda t: 2 * t / LOGO_FLY + 1)]).with_start(stay_clip.end).with_position(("center", "center")).with_duration(LOGO_FLY)
-
-        CompositeVideoClip([puff_in_clip, stay_clip, puff_out_clip]).write_videofile('logo.mp4', threads=32, fps=24, preset='ultrafast')
-        return VideoFileClip('logo.mp4')
-
-    # 加载logo片段
-    def load_logo_video(self):
-        if not self.game.logo_video or not os.path.exists(self.game.logo_video):
-            return self.create_logo_video()
-        else:
-            return VideoFileClip(self.game.logo_video).with_effects([Resize(self.main_video.size)])
-
-    def load_brand_video(self):
-        if not os.path.exists(self.game.brand_video):
-            return self.logo_video
-        else:
-            return VideoFileClip(self.game.brand_video).with_effects([Resize(self.main_video.size)])
-
-
